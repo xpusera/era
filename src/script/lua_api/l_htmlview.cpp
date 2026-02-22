@@ -21,7 +21,10 @@ static bool isStringEqCI(lua_State *L, int idx, const char *s)
 {
 	if (!lua_isstring(L, idx))
 		return false;
-	std::string v = readParam<std::string>(L, idx);
+	const char *vv = lua_tostring(L, idx);
+	if (!vv)
+		return false;
+	std::string v(vv);
 	for (auto &c : v)
 		c = (char)std::tolower((unsigned char)c);
 	std::string ss(s);
