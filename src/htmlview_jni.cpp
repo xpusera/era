@@ -138,6 +138,11 @@ void htmlview_jni_send(const std::string &id, const std::string &message)
 	callVoidMethod2Str("htmlview_send", id, message);
 }
 
+void htmlview_jni_navigate(const std::string &id, const std::string &url)
+{
+	callVoidMethod2Str("htmlview_navigate", id, url);
+}
+
 struct HtmlViewMessage {
 	std::string id;
 	std::string message;

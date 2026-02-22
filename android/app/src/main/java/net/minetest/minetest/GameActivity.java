@@ -28,8 +28,10 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ActivityNotFoundException;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.Manifest;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Bundle;
@@ -47,6 +49,8 @@ import android.content.res.Configuration;
 
 import androidx.annotation.Keep;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
@@ -66,6 +70,16 @@ public class GameActivity extends SDLActivity {
 		View content = SDLActivity.getContentView();
 		if (content instanceof ViewGroup) {
 			mHtmlViewManager = new HTMLViewManager(this, (ViewGroup) content);
+		}
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+			boolean needCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED;
+			boolean needMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED;
+			if (needCamera || needMic) {
+				ActivityCompat.requestPermissions(this,
+						new String[] { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO },
+						1001);
+			}
 		}
 	}
 
@@ -136,6 +150,11 @@ public class GameActivity extends SDLActivity {
 	public void htmlview_send(String id, String message) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_send(id, message);
+	}
+
+	public void htmlview_navigate(String id, String url) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_navigate(id, url);
 	}
 
 	private NotificationManager mNotifyManager;

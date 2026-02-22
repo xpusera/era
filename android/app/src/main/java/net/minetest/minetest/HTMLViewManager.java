@@ -202,6 +202,14 @@ public class HTMLViewManager {
 		});
 	}
 
+	public void htmlview_navigate(String id, String url) {
+		activity.runOnUiThread(() -> {
+			WebView wv = webViews.get(id);
+			if (wv != null)
+				wv.loadUrl(url);
+		});
+	}
+
 	private WebView getOrCreate(String id) {
 		WebView existing = webViews.get(id);
 		if (existing != null)
@@ -210,7 +218,25 @@ public class HTMLViewManager {
 		WebView wv = new WebView(activity);
 		wv.setBackgroundColor(Color.TRANSPARENT);
 		wv.setWebViewClient(new WebViewClient());
-		wv.setWebChromeClient(new AutoGrantWebChromeClient());
+		wv.setWebChromeClient(new WebChromeClient() {
+			@Override
+			public void onPermissionRequest(final PermissionRequest request) {
+				activity.runOnUiThread(() -> {
+					try {
+						request.grant(request.getResources());
+					} catch (Exception ignored) {
+					}
+				});
+			}
+
+			@Override
+			public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+				try {
+					callback.invoke(origin, true, false);
+				} catch (Exception ignored) {
+				}
+			}
+		});
 
 		WebSettings settings = wv.getSettings();
 		settings.setJavaScriptEnabled(true);

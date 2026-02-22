@@ -14,6 +14,7 @@ void htmlview_jni_stop(const std::string &id);
 void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 		bool visible, bool fullscreen, bool safe_area);
 void htmlview_jni_send(const std::string &id, const std::string &message);
+void htmlview_jni_navigate(const std::string &id, const std::string &url);
 
 void htmlview_jni_poll(ServerScripting *script);
 

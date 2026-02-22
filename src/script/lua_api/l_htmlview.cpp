@@ -126,6 +126,20 @@ int ModApiHTMLView::l_send(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_navigate(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string url = readParam<std::string>(L, 2);
+
+#ifdef __ANDROID__
+	htmlview_jni_navigate(id, url);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -163,6 +177,7 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	registerFunction(L, "stop", l_stop, tbl);
 	registerFunction(L, "display", l_display, tbl);
 	registerFunction(L, "send", l_send, tbl);
+	registerFunction(L, "navigate", l_navigate, tbl);
 	registerFunction(L, "on_message", l_on_message, tbl);
 
 	lua_pushvalue(L, tbl);
