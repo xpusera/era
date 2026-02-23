@@ -13,6 +13,8 @@ private:
 	static int l_display(lua_State *L);
 	static int l_send(lua_State *L);
 	static int l_navigate(lua_State *L);
+	static int l_inject(lua_State *L);
+	static int l_pipe(lua_State *L);
 	static int l_on_message(lua_State *L);
 
 public:

@@ -143,6 +143,28 @@ void htmlview_jni_navigate(const std::string &id, const std::string &url)
 	callVoidMethod2Str("htmlview_navigate", id, url);
 }
 
+void htmlview_jni_inject(const std::string &id, const std::string &js)
+{
+	callVoidMethod2Str("htmlview_inject", id, js);
+}
+
+void htmlview_jni_pipe(const std::string &fromId, const std::string &toId)
+{
+	callVoidMethod2Str("htmlview_pipe", fromId, toId);
+}
+
+#if 0
+void htmlview_jni_inject(const std::string &id, const std::string &js)
+{
+	callVoidMethod2Str("htmlview_inject", id, js);
+}
+
+void htmlview_jni_pipe(const std::string &fromId, const std::string &toId)
+{
+	callVoidMethod2Str("htmlview_pipe", fromId, toId);
+}
+#endif
+
 struct HtmlViewMessage {
 	std::string id;
 	std::string message;

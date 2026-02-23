@@ -157,6 +157,16 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_navigate(id, url);
 	}
 
+	public void htmlview_inject(String id, String js) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_inject(id, js);
+	}
+
+	public void htmlview_pipe(String fromId, String toId) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_pipe(fromId, toId);
+	}
+
 	private NotificationManager mNotifyManager;
 	private boolean gameNotificationShown = false;
 

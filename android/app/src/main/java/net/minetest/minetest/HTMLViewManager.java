@@ -33,6 +33,7 @@ public class HTMLViewManager {
 	private final GameActivity activity;
 	private final ViewGroup root;
 	private final HashMap<String, WebView> webViews = new HashMap<>();
+	private final HashMap<String, String> pipes = new HashMap<>();
 
 	public HTMLViewManager(GameActivity activity, ViewGroup root) {
 		this.activity = activity;
@@ -207,7 +208,26 @@ public class HTMLViewManager {
 			WebView wv = webViews.get(id);
 			if (wv != null)
 				wv.loadUrl(url);
+			if (wv != null)
+				webViews.put(id, wv);
 		});
+	}
+
+	public void htmlview_inject(String id, String js) {
+		activity.runOnUiThread(() -> {
+			WebView wv = webViews.get(id);
+			if (wv != null) {
+				if (Build.VERSION.SDK_INT >= 19) {
+					wv.evaluateJavascript(js, null);
+				} else {
+					wv.loadUrl("javascript:" + js);
+				}
+			}
+		});
+	}
+
+	public void htmlview_pipe(String fromId, String toId) {
+		activity.runOnUiThread(() -> pipes.put(fromId, toId));
 	}
 
 	private WebView getOrCreate(String id) {
@@ -316,6 +336,11 @@ public class HTMLViewManager {
 
 		@JavascriptInterface
 		public void send(String message) {
+			String pipeTo = pipes.get(viewId);
+			if (pipeTo != null) {
+				htmlview_send(pipeTo, message);
+				return;
+			}
 			nativeOnHTMLMessage(viewId, message);
 		}
 	}

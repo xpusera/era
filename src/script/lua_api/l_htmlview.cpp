@@ -140,6 +140,34 @@ int ModApiHTMLView::l_navigate(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_inject(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string js = readParam<std::string>(L, 2);
+
+#ifdef __ANDROID__
+	htmlview_jni_inject(id, js);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_pipe(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string from_id = readParam<std::string>(L, 1);
+	std::string to_id = readParam<std::string>(L, 2);
+
+#ifdef __ANDROID__
+	htmlview_jni_pipe(from_id, to_id);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -178,6 +206,8 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	registerFunction(L, "display", l_display, tbl);
 	registerFunction(L, "send", l_send, tbl);
 	registerFunction(L, "navigate", l_navigate, tbl);
+	registerFunction(L, "inject", l_inject, tbl);
+	registerFunction(L, "pipe", l_pipe, tbl);
 	registerFunction(L, "on_message", l_on_message, tbl);
 
 	lua_pushvalue(L, tbl);
