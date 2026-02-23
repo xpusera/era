@@ -554,6 +554,30 @@ minetest.register_globalstep(function(dtime)
         end
     end
 
+    if oh.html_state and oh.html_state.started and oh.entity_active and oh.current_entity and oh.html_mimic then
+        local now = minetest.get_gametime()
+        oh.html_state.last_auto_mimic = oh.html_state.last_auto_mimic or 0
+        if now - oh.html_state.last_auto_mimic > 6 then
+            local player = oh.get_random_player()
+            if player then
+                local ppos = player:get_pos()
+                local epos = oh.current_entity:get_pos()
+                if ppos and epos then
+                    local dist = vector.distance(ppos, epos)
+                    local t = 0
+                    if dist < 30 then
+                        t = (30 - dist) / 30
+                    end
+                    local chance = 0.02 + t * 0.10
+                    if math.random() < chance then
+                        oh.html_state.last_auto_mimic = now
+                        oh.html_mimic("corrupt", dist)
+                    end
+                end
+            end
+        end
+    end
+
     if oh.ai_step then
         oh.ai_step(dtime)
     end
