@@ -70,6 +70,8 @@ AppDir
 !/mods/mods_here.txt
 !/mods/htmlview_test/
 !/mods/htmlview_test/**
+!/mods/obelisk_analog/
+!/mods/obelisk_analog/**
 /worlds/*
 !/worlds/worlds_here.txt
 /clientmods/*

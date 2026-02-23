@@ -1,0 +1,394 @@
+local oh = obelisk_analog
+
+local HTML_AI_CORE = [==[
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			background: transparent;
+			overflow: hidden;
+			user-select: none;
+			-webkit-user-select: none;
+			-webkit-touch-callout: none;
+			-webkit-tap-highlight-color: rgba(0,0,0,0);
+			touch-action: none;
+		}
+	</style>
+</head>
+<body>
+	<script>
+		(function () {
+			document.addEventListener('contextmenu', function (e) { e.preventDefault(); }, { passive: false });
+			document.addEventListener('selectstart', function (e) { e.preventDefault(); }, { passive: false });
+
+			var state = {
+				mode: 'ai',
+				last: null,
+			};
+
+			function safeParse(s) {
+				try { return JSON.parse(s); } catch (e) { return null; }
+			}
+
+			function reply(obj) {
+				try { luanti.send(JSON.stringify(obj)); } catch (e) {}
+			}
+
+			luanti.on_message(function (msg) {
+				var o = safeParse(msg);
+				if (!o || !o.type) return;
+
+				if (o.type === 'set_mode') {
+					state.mode = (o.mode === 'entities') ? 'entities' : 'ai';
+					reply({ type: 'mode', mode: state.mode });
+					return;
+				}
+
+				if (o.type === 'ping') {
+					reply({ type: 'pong', t: Date.now() });
+					return;
+				}
+
+				state.last = o;
+			});
+		})();
+	</script>
+</body>
+</html>
+]==]
+
+local HTML_VOICE_METER = [==[
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			background: transparent;
+			overflow: hidden;
+			user-select: none;
+			-webkit-user-select: none;
+			-webkit-touch-callout: none;
+			-webkit-tap-highlight-color: rgba(0,0,0,0);
+			touch-action: none;
+			pointer-events: none;
+		}
+
+		#wrap {
+			position: absolute;
+			top: 0;
+			right: 0;
+			width: 160px;
+			height: 18px;
+			padding: 8px;
+			box-sizing: border-box;
+		}
+
+		#meter {
+			position: relative;
+			width: 100%;
+			height: 2px;
+			opacity: 0.95;
+		}
+
+		#bar {
+			position: absolute;
+			left: 0;
+			top: 0;
+			height: 100%;
+			width: 0%;
+			background: #ffffff;
+			transform-origin: left center;
+			transition: width 80ms linear, background 120ms linear;
+		}
+
+		#threshold {
+			position: absolute;
+			top: -3px;
+			height: 8px;
+			width: 1px;
+			background: rgba(255,255,255,0.6);
+		}
+	</style>
+</head>
+<body>
+	<div id="wrap">
+		<div id="meter">
+			<div id="bar"></div>
+			<div id="threshold"></div>
+		</div>
+	</div>
+
+	<script>
+		(function () {
+			document.addEventListener('contextmenu', function (e) { e.preventDefault(); }, { passive: false });
+			document.addEventListener('selectstart', function (e) { e.preventDefault(); }, { passive: false });
+
+			var THRESHOLD = 0.35;
+			var bar = document.getElementById('bar');
+			var thr = document.getElementById('threshold');
+			thr.style.left = (THRESHOLD * 100).toFixed(1) + '%';
+
+			var ctx = null;
+			var source = null;
+			var processor = null;
+			var ring = null;
+			var ringWrite = 0;
+			var ringSeconds = 2.0;
+
+			var lastSend = 0;
+			var sendEveryMs = 120;
+			var lastLevel = 0;
+
+			function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+			function send(obj) {
+				try { luanti.send(JSON.stringify(obj)); } catch (e) {}
+			}
+
+			function updateUI(level) {
+				var pct = clamp(level, 0, 1) * 100;
+				bar.style.width = pct.toFixed(1) + '%';
+				bar.style.background = (level >= THRESHOLD) ? '#ff2b2b' : '#ffffff';
+			}
+
+			function ensureAudio() {
+				if (ctx) return;
+				ctx = new (window.AudioContext || window.webkitAudioContext)();
+				ring = new Float32Array(Math.floor(ctx.sampleRate * ringSeconds));
+
+				navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+					source = ctx.createMediaStreamSource(stream);
+					processor = ctx.createScriptProcessor(1024, 1, 1);
+					source.connect(processor);
+					processor.connect(ctx.destination);
+
+					processor.onaudioprocess = function (e) {
+						var input = e.inputBuffer.getChannelData(0);
+						var sum = 0;
+						for (var i = 0; i < input.length; i++) {
+							var s = input[i];
+							sum += s * s;
+							if (ring) {
+								ring[ringWrite] = s;
+								ringWrite = (ringWrite + 1) % ring.length;
+							}
+						}
+
+						var rms = Math.sqrt(sum / input.length);
+						var level = clamp(rms * 3.2, 0, 1);
+						lastLevel = level;
+						updateUI(level);
+
+						var now = Date.now();
+						if (now - lastSend >= sendEveryMs) {
+							lastSend = now;
+							send({ type: 'voice', level: level, loud: level >= THRESHOLD, t: now });
+						}
+					};
+				}).catch(function (err) {
+					send({ type: 'voice_error', error: String(err) });
+				});
+			}
+
+			function snapshotRecent(seconds) {
+				if (!ctx || !ring) return null;
+				var n = Math.min(ring.length, Math.floor(ctx.sampleRate * seconds));
+				var out = new Float32Array(n);
+				var start = ringWrite - n;
+				if (start < 0) start += ring.length;
+				for (var i = 0; i < n; i++) {
+					out[i] = ring[(start + i) % ring.length];
+				}
+				return out;
+			}
+
+			function playMimic(style, distance) {
+				if (!ctx) return;
+				var seconds = 0.65;
+				var samples = snapshotRecent(seconds);
+				if (!samples) return;
+
+				var buffer = ctx.createBuffer(1, samples.length, ctx.sampleRate);
+				buffer.copyToChannel(samples, 0, 0);
+
+				var src = ctx.createBufferSource();
+				src.buffer = buffer;
+
+				var gain = ctx.createGain();
+				var g = 0.04;
+				if (typeof distance === 'number') {
+					g = clamp(0.22 / Math.max(2.5, distance), 0.02, 0.09);
+				}
+				gain.gain.value = g;
+
+				var node = src;
+
+				if (style === 'child') {
+					src.playbackRate.value = 1.55;
+				} else if (style === 'corrupt') {
+					src.playbackRate.value = 0.92;
+					var shaper = ctx.createWaveShaper();
+					var curve = new Float32Array(2048);
+					for (var i = 0; i < curve.length; i++) {
+						var x = (i * 2) / (curve.length - 1) - 1;
+						curve[i] = Math.tanh(3.4 * x);
+					}
+					shaper.curve = curve;
+					shaper.oversample = '2x';
+
+					var bp = ctx.createBiquadFilter();
+					bp.type = 'bandpass';
+					bp.frequency.value = 820;
+					bp.Q.value = 0.9;
+
+					node.connect(shaper);
+					shaper.connect(bp);
+					node = bp;
+				} else {
+					src.playbackRate.value = 1.0;
+				}
+
+				node.connect(gain);
+				gain.connect(ctx.destination);
+				src.start();
+			}
+
+			function safeParse(s) {
+				try { return JSON.parse(s); } catch (e) { return null; }
+			}
+
+			luanti.on_message(function (msg) {
+				var o = safeParse(msg);
+				if (!o || !o.type) return;
+				if (o.type === 'mimic') {
+					playMimic(o.style || 'normal', o.distance);
+					return;
+				}
+				if (o.type === 'set_threshold' && typeof o.value === 'number') {
+					THRESHOLD = clamp(o.value, 0.05, 0.95);
+					thr.style.left = (THRESHOLD * 100).toFixed(1) + '%';
+					return;
+				}
+			});
+
+			ensureAudio();
+		})();
+	</script>
+</body>
+</html>
+]==]
+
+function oh.html_supported()
+	return type(htmlview) == "table" and type(htmlview.run) == "function" and type(htmlview.display) == "function"
+end
+
+oh.html_state = {
+	started = false,
+	ai_mode = "ai",
+	voice_level = 0,
+	voice_loud = false,
+	last_voice_t = 0,
+}
+
+local function safe_json(s)
+	if type(s) ~= "string" then
+		return nil
+	end
+	local ok, obj = pcall(minetest.parse_json, s)
+	if ok then
+		return obj
+	end
+	return nil
+end
+
+function oh.html_start()
+	if oh.html_state.started then
+		return
+	end
+	if not oh.html_supported() then
+		return
+	end
+
+	htmlview.run("oa_ai_core", HTML_AI_CORE)
+	htmlview.display("oa_ai_core", {
+		visible = false,
+		x = 0,
+		y = 0,
+		width = 1,
+		height = 1,
+		safe_area = true,
+	})
+	htmlview.on_message("oa_ai_core", function(msg)
+		local o = safe_json(msg)
+		if not o or o.type ~= "mode" then
+			return
+		end
+		if o.mode == "entities" then
+			oh.html_state.ai_mode = "entities"
+		else
+			oh.html_state.ai_mode = "ai"
+		end
+	end)
+
+	htmlview.run("oa_voice", HTML_VOICE_METER)
+	htmlview.display("oa_voice", {
+		visible = true,
+		x = 100000,
+		y = 0,
+		width = 176,
+		height = 34,
+		safe_area = true,
+	})
+	htmlview.on_message("oa_voice", function(msg)
+		local o = safe_json(msg)
+		if not o or type(o.type) ~= "string" then
+			return
+		end
+		if o.type == "voice" then
+			oh.html_state.voice_level = tonumber(o.level) or 0
+			oh.html_state.voice_loud = not not o.loud
+			oh.html_state.last_voice_t = tonumber(o.t) or 0
+		elseif o.type == "voice_error" then
+			minetest.log("warning", "[obelisk_analog] voice meter error: " .. tostring(o.error))
+		end
+	end)
+
+	oh.html_state.started = true
+end
+
+function oh.html_mimic(style, distance)
+	if not oh.html_supported() then
+		return
+	end
+	if not oh.html_state.started then
+		return
+	end
+	htmlview.send("oa_voice", minetest.write_json({
+		type = "mimic",
+		style = style or "normal",
+		distance = distance,
+	}))
+end
+
+function oh.html_set_mode(mode)
+	if not oh.html_supported() then
+		return
+	end
+	if not oh.html_state.started then
+		return
+	end
+	htmlview.send("oa_ai_core", minetest.write_json({type = "set_mode", mode = mode}))
+end

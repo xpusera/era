@@ -1,0 +1,5 @@
+# Obelisk Analog AI + HTML integration
+
+obelisk_openrouter_endpoint (OpenRouter endpoint) string https://openrouter.ai/api/v1/chat/completions
+obelisk_openrouter_model (OpenRouter model) string openrouter/free
+obelisk_openrouter_api_key (OpenRouter API key) string
