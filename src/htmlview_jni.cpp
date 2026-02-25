@@ -12,6 +12,7 @@
 #if CHECK_CLIENT_BUILD()
 #include "client/renderingengine.h"
 #include "client/texturesource.h"
+#include <IFileSystem.h>
 #endif
 
 #include <jni.h>
