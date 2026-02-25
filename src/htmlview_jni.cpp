@@ -121,6 +121,32 @@ static void callVoidMethod1Str(const char *method_name, const std::string &a)
 	env->DeleteLocalRef(activityClass);
 }
 
+static void callVoidMethod1Str2Int(const char *method_name, const std::string &a,
+		int b, int c)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return;
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name,
+		"(Ljava/lang/String;II)V");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return;
+	}
+
+	jstring ja = env->NewStringUTF(a.c_str());
+	jint jb = b;
+	jint jc = c;
+	env->CallVoidMethod(activity, mid, ja, jb, jc);
+	if (ja)
+		env->DeleteLocalRef(ja);
+	env->DeleteLocalRef(activityClass);
+}
+
 void htmlview_jni_run(const std::string &id, const std::string &html)
 {
 	callVoidMethod2Str("htmlview_run", id, html);
@@ -192,6 +218,11 @@ void htmlview_jni_pipe(const std::string &fromId, const std::string &toId)
 	callVoidMethod2Str("htmlview_pipe", fromId, toId);
 }
 
+void htmlview_jni_capture(const std::string &id, int width, int height)
+{
+	callVoidMethod1Str2Int("htmlview_capture", id, width, height);
+}
+
 #if 0
 void htmlview_jni_inject(const std::string &id, const std::string &js)
 {
@@ -209,8 +240,14 @@ struct HtmlViewMessage {
 	std::string message;
 };
 
+struct HtmlViewCapture {
+	std::string id;
+	std::string png_base64;
+};
+
 static std::mutex g_msg_mutex;
 static std::deque<HtmlViewMessage> g_messages;
+static std::deque<HtmlViewCapture> g_captures;
 
 extern "C" JNIEXPORT void JNICALL
 Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLMessage(
@@ -225,6 +262,19 @@ Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLMessage(
 	}
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLCapture(
+		JNIEnv *env, jclass, jstring id, jstring png_base64)
+{
+	HtmlViewCapture c;
+	c.id = readJavaString(env, id);
+	c.png_base64 = readJavaString(env, png_base64);
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		g_captures.push_back(std::move(c));
+	}
+}
+
 #include "scripting_server.h"
 
 void htmlview_jni_poll(ServerScripting *script)
@@ -232,12 +282,17 @@ void htmlview_jni_poll(ServerScripting *script)
 	if (!script)
 		return;
 	std::deque<HtmlViewMessage> batch;
+	std::deque<HtmlViewCapture> cap_batch;
 	{
 		std::lock_guard<std::mutex> lock(g_msg_mutex);
 		batch.swap(g_messages);
+		cap_batch.swap(g_captures);
 	}
 	for (const auto &m : batch) {
 		script->on_htmlview_message(m.id, m.message);
+	}
+	for (const auto &c : cap_batch) {
+		script->on_htmlview_capture(c.id, c.png_base64);
 	}
 }
 

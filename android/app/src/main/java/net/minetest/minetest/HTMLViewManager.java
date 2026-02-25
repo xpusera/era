@@ -1,9 +1,12 @@
 package net.minetest.minetest;
 
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Base64;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -246,6 +249,57 @@ public class HTMLViewManager {
 
 	public void htmlview_pipe(String fromId, String toId) {
 		activity.runOnUiThread(() -> pipes.put(fromId, toId));
+	}
+
+	public void htmlview_capture(String id, int width, int height) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = views.get(id);
+			if (st == null)
+				return;
+			WebView wv = st.webView;
+
+			int w = width > 0 ? width : wv.getWidth();
+			int h = height > 0 ? height : wv.getHeight();
+			if (w <= 0)
+				w = st.container.getWidth();
+			if (h <= 0)
+				h = st.container.getHeight();
+			if (w <= 0)
+				w = 256;
+			if (h <= 0)
+				h = 256;
+
+			w = Math.min(w, 2048);
+			h = Math.min(h, 2048);
+
+			try {
+				Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+				Canvas canvas = new Canvas(bmp);
+				int vw = wv.getWidth();
+				int vh = wv.getHeight();
+				if (vw > 0 && vh > 0) {
+					float sx = w / (float) vw;
+					float sy = h / (float) vh;
+					canvas.save();
+					canvas.scale(sx, sy);
+					wv.draw(canvas);
+					canvas.restore();
+				} else {
+					int ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
+					int hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
+					wv.measure(ws, hs);
+					wv.layout(0, 0, w, h);
+					wv.draw(canvas);
+				}
+
+				ByteArrayOutputStream out = new ByteArrayOutputStream();
+				bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
+				bmp.recycle();
+				String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+				nativeOnHTMLCapture(id, b64);
+			} catch (Exception ignored) {
+			}
+		});
 	}
 
 	private HtmlViewState getOrCreate(String id) {
@@ -678,4 +732,5 @@ public class HTMLViewManager {
 	}
 
 	private static native void nativeOnHTMLMessage(String id, String message);
+	private static native void nativeOnHTMLCapture(String id, String pngBase64);
 }

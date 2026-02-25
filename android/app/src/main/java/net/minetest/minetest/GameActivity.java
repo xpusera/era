@@ -174,6 +174,11 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_pipe(fromId, toId);
 	}
 
+	public void htmlview_capture(String id, int width, int height) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_capture(id, width, height);
+	}
+
 	private NotificationManager mNotifyManager;
 	private boolean gameNotificationShown = false;
 

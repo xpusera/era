@@ -14,6 +14,7 @@
 #endif
 
 static constexpr const char *HTMLVIEW_CALLBACKS_RKEY = "HTMLVIEW_CALLBACKS";
+static constexpr const char *HTMLVIEW_CAPTURE_CALLBACKS_RKEY = "HTMLVIEW_CAPTURE_CALLBACKS";
 
 #ifdef __ANDROID__
 static constexpr int CENTER_SENTINEL = std::numeric_limits<int>::min();
@@ -194,6 +195,29 @@ int ModApiHTMLView::l_pipe(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_capture(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	int width = 0;
+	int height = 0;
+	if (lua_istable(L, 2)) {
+		width = getintfield_default(L, 2, "width", 0);
+		height = getintfield_default(L, 2, "height", 0);
+	}
+	if (width < 0)
+		width = 0;
+	if (height < 0)
+		height = 0;
+
+#ifdef __ANDROID__
+	htmlview_jni_capture(id, width, height);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -221,6 +245,33 @@ int ModApiHTMLView::l_on_message(lua_State *L)
 	return 0;
 }
 
+int ModApiHTMLView::l_on_capture(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	bool clear = lua_isnil(L, 2);
+	if (!clear)
+		luaL_checktype(L, 2, LUA_TFUNCTION);
+
+	lua_getfield(L, LUA_REGISTRYINDEX, HTMLVIEW_CAPTURE_CALLBACKS_RKEY);
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		lua_newtable(L);
+		lua_pushvalue(L, -1);
+		lua_setfield(L, LUA_REGISTRYINDEX, HTMLVIEW_CAPTURE_CALLBACKS_RKEY);
+	}
+
+	lua_pushlstring(L, id.c_str(), id.size());
+	if (clear)
+		lua_pushnil(L);
+	else
+		lua_pushvalue(L, 2);
+	lua_settable(L, -3);
+
+	lua_pop(L, 1);
+	return 0;
+}
+
 void ModApiHTMLView::Initialize(lua_State *L, int top)
 {
 #ifdef __ANDROID__
@@ -235,7 +286,9 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	registerFunction(L, "navigate", l_navigate, tbl);
 	registerFunction(L, "inject", l_inject, tbl);
 	registerFunction(L, "pipe", l_pipe, tbl);
+	registerFunction(L, "capture", l_capture, tbl);
 	registerFunction(L, "on_message", l_on_message, tbl);
+	registerFunction(L, "on_capture", l_on_capture, tbl);
 
 	lua_pushvalue(L, tbl);
 	lua_setglobal(L, "htmlview");
