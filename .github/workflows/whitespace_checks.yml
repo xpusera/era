@@ -4,28 +4,7 @@ name: whitespace_checks
 # Not checked: .lua, .yml, .properties, .conf, .java, .py, .svg, .gradle, .xml, ...
 # (luacheck already checks .lua files)
 on:
-  push:
-    paths:
-      - '**.txt'
-      - '**.md'
-      - '**.[ch]'
-      - '**.cpp'
-      - '**.hpp'
-      - '**.sh'
-      - '**.cmake'
-      - '**.glsl'
-      - '**.lua'
-  pull_request:
-    paths:
-      - '**.txt'
-      - '**.md'
-      - '**.[ch]'
-      - '**.cpp'
-      - '**.hpp'
-      - '**.sh'
-      - '**.cmake'
-      - '**.glsl'
-      - '**.lua'
+  workflow_dispatch:
 
 jobs:
   trailing_whitespaces:

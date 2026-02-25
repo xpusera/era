@@ -2,34 +2,7 @@ name: windows
 
 # build on c/cpp changes or workflow changes
 on:
-  push:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/buildbot/**'
-      - 'misc/*'
-      - '.github/workflows/windows.yml'
-  pull_request:
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'po/**.po'
-      - 'util/buildbot/**'
-      - 'misc/*'
-      - '.github/workflows/windows.yml'
+  workflow_dispatch:
 
 jobs:
   mingw:

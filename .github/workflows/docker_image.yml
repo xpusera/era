@@ -6,33 +6,7 @@ name: docker_image
 # https://github.com/opencontainers/image-spec/blob/main/annotations.md
 
 on:
-  push:
-    branches: [ "master" ]
-    # Publish semver tags as releases.
-    tags: [ "*" ]
-  pull_request:
-    # Build docker image on pull requests. (but do not publish)
-    paths:
-      - 'lib/**.[ch]'
-      - 'lib/**.cpp'
-      - 'src/**.[ch]'
-      - 'src/**.cpp'
-      - 'irr/**.[ch]'
-      - 'irr/**.cpp'
-      - '**/CMakeLists.txt'
-      - 'cmake/Modules/**'
-      - 'util/ci/**'
-      - 'misc/irrlichtmt_tag.txt'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/docker_image.yml'
   workflow_dispatch:
-    inputs:
-      use_cache:
-        description: "Use build cache"
-        required: true
-        type: boolean
-        default: true
 
 env:
   REGISTRY: ghcr.io

@@ -5,6 +5,7 @@
 
 #include "common/c_converter.h"
 #include "lua_api/l_internal.h"
+#include "cpp_api/s_security.h"
 
 #ifdef __ANDROID__
 #include "htmlview_jni.h"
@@ -48,6 +49,24 @@ int ModApiHTMLView::l_run(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_run_external(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string root_dir = readParam<std::string>(L, 2);
+	std::string entry = "index.html";
+	if (!lua_isnoneornil(L, 3))
+		entry = readParam<std::string>(L, 3);
+
+#ifdef __ANDROID__
+	CHECK_SECURE_PATH(L, root_dir.c_str(), false);
+	htmlview_jni_run_external(id, root_dir, entry);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 int ModApiHTMLView::l_stop(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -71,6 +90,12 @@ int ModApiHTMLView::l_display(lua_State *L)
 	bool visible = getboolfield_default(L, 2, "visible", true);
 	bool safe_area = getboolfield_default(L, 2, "safe_area", true);
 	bool fullscreen = getboolfield_default(L, 2, "fullscreen", false);
+	bool drag_embed = getboolfield_default(L, 2, "drag_embed", false);
+	if (!drag_embed)
+		drag_embed = getboolfield_default(L, 2, "draggable", false);
+	float border_radius = getfloatfield_default(L, 2, "border_radius", 0.0f);
+	if (border_radius < 0.0f)
+		border_radius = 0.0f;
 
 	int x = 0;
 	int y = 0;
@@ -105,7 +130,8 @@ int ModApiHTMLView::l_display(lua_State *L)
 		fullscreen = true;
 	lua_pop(L, 1);
 
-	htmlview_jni_display(id, x, y, w, h, visible, fullscreen, safe_area);
+	htmlview_jni_display(id, x, y, w, h, visible, fullscreen, safe_area,
+		drag_embed, border_radius);
 	return 0;
 #else
 	return luaL_error(L, "htmlview is only available on Android");
@@ -202,6 +228,7 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	int tbl = lua_gettop(L);
 
 	registerFunction(L, "run", l_run, tbl);
+	registerFunction(L, "run_external", l_run_external, tbl);
 	registerFunction(L, "stop", l_stop, tbl);
 	registerFunction(L, "display", l_display, tbl);
 	registerFunction(L, "send", l_send, tbl);

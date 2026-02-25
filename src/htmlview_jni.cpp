@@ -68,6 +68,36 @@ static void callVoidMethod2Str(const char *method_name, const std::string &a, co
 	env->DeleteLocalRef(activityClass);
 }
 
+static void callVoidMethod3Str(const char *method_name, const std::string &a,
+		const std::string &b, const std::string &c)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return;
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name,
+		"(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return;
+	}
+
+	jstring ja = env->NewStringUTF(a.c_str());
+	jstring jb = env->NewStringUTF(b.c_str());
+	jstring jc = env->NewStringUTF(c.c_str());
+	env->CallVoidMethod(activity, mid, ja, jb, jc);
+	if (ja)
+		env->DeleteLocalRef(ja);
+	if (jb)
+		env->DeleteLocalRef(jb);
+	if (jc)
+		env->DeleteLocalRef(jc);
+	env->DeleteLocalRef(activityClass);
+}
+
 static void callVoidMethod1Str(const char *method_name, const std::string &a)
 {
 	JNIEnv *env;
@@ -96,13 +126,20 @@ void htmlview_jni_run(const std::string &id, const std::string &html)
 	callVoidMethod2Str("htmlview_run", id, html);
 }
 
+void htmlview_jni_run_external(const std::string &id, const std::string &root_dir,
+		const std::string &entry)
+{
+	callVoidMethod3Str("htmlview_run_external", id, root_dir, entry);
+}
+
 void htmlview_jni_stop(const std::string &id)
 {
 	callVoidMethod1Str("htmlview_stop", id);
 }
 
 void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
-		bool visible, bool fullscreen, bool safe_area)
+		bool visible, bool fullscreen, bool safe_area,
+		bool drag_embed, float border_radius)
 {
 	JNIEnv *env;
 	jobject activity;
@@ -111,7 +148,7 @@ void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 		return;
 
 	jmethodID mid = env->GetMethodID(activityClass, "htmlview_display",
-		"(Ljava/lang/String;IIIIZZZ)V");
+		"(Ljava/lang/String;IIIIZZZZF)V");
 	if (!mid) {
 		errorstream << "htmlview_jni: missing method htmlview_display" << std::endl;
 		env->DeleteLocalRef(activityClass);
@@ -126,8 +163,10 @@ void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 	jboolean jvis = visible;
 	jboolean jfull = fullscreen;
 	jboolean jsafe = safe_area;
+	jboolean jdrag = drag_embed;
+	jfloat jrad = border_radius;
 	
-	env->CallVoidMethod(activity, mid, jid, jx, jy, jw, jh, jvis, jfull, jsafe);
+	env->CallVoidMethod(activity, mid, jid, jx, jy, jw, jh, jvis, jfull, jsafe, jdrag, jrad);
 	if (jid)
 		env->DeleteLocalRef(jid);
 	env->DeleteLocalRef(activityClass);

@@ -136,15 +136,22 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_run(id, html);
 	}
 
+	public void htmlview_run_external(String id, String rootDir, String entry) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_run_external(id, rootDir, entry);
+	}
+
 	public void htmlview_stop(String id) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_stop(id);
 	}
 
 	public void htmlview_display(String id, int x, int y, int width, int height,
-									boolean visible, boolean fullscreen, boolean safe_area) {
+									boolean visible, boolean fullscreen, boolean safe_area,
+									boolean drag_embed, float border_radius) {
 		if (mHtmlViewManager != null)
-			mHtmlViewManager.htmlview_display(id, x, y, width, height, visible, fullscreen, safe_area);
+			mHtmlViewManager.htmlview_display(id, x, y, width, height, visible, fullscreen, safe_area,
+				drag_embed, border_radius);
 	}
 
 	public void htmlview_send(String id, String message) {

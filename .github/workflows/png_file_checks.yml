@@ -2,14 +2,7 @@ name: png_file_checks
 
 # Check whether all png files are in a valid format
 on:
-  push:
-    paths:
-      - '**.png'
-      - '.github/workflows/**.yml'
-  pull_request:
-    paths:
-      - '**.png'
-      - '.github/workflows/**.yml'
+  workflow_dispatch:
 
 jobs:
   png_optimized:

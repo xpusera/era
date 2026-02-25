@@ -21,7 +21,9 @@ htmlview.display("test_ui", {
 	y = 50,
 	width = 400,
 	height = 200,
-	safe_area = true
+	safe_area = true,
+	drag_embed = true,
+	border_radius = 24
 })
 
 htmlview.on_message("test_ui", function(msg)
