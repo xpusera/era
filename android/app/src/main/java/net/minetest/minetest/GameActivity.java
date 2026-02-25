@@ -179,6 +179,16 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_capture(id, width, height);
 	}
 
+	public void htmlview_bind_texture(String id, int width, int height, int fps) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_bind_texture(id, width, height, fps);
+	}
+
+	public void htmlview_unbind_texture(String id) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_unbind_texture(id);
+	}
+
 	private NotificationManager mNotifyManager;
 	private boolean gameNotificationShown = false;
 

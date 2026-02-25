@@ -6,6 +6,7 @@
 #include <string>
 
 class ServerScripting;
+class IWritableTextureSource;
 
 #ifdef __ANDROID__
 
@@ -21,7 +22,11 @@ void htmlview_jni_navigate(const std::string &id, const std::string &url);
 void htmlview_jni_inject(const std::string &id, const std::string &js);
 void htmlview_jni_pipe(const std::string &fromId, const std::string &toId);
 void htmlview_jni_capture(const std::string &id, int width, int height);
+void htmlview_jni_bind_texture(const std::string &id, const std::string &texture_name,
+		int width, int height, int fps);
+void htmlview_jni_unbind_texture(const std::string &id);
 
 void htmlview_jni_poll(ServerScripting *script);
+void htmlview_jni_poll_textures(IWritableTextureSource *tsrc);
 
 #endif

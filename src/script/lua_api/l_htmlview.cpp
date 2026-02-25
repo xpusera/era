@@ -7,6 +7,9 @@
 #include "lua_api/l_internal.h"
 #include "cpp_api/s_security.h"
 
+#include "util/hashing.h"
+#include "util/hex.h"
+
 #ifdef __ANDROID__
 #include "htmlview_jni.h"
 #include <cctype>
@@ -218,6 +221,53 @@ int ModApiHTMLView::l_capture(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_bind_texture(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string texture_name = readParam<std::string>(L, 2);
+	int width = 0;
+	int height = 0;
+	int fps = 10;
+	if (lua_istable(L, 3)) {
+		width = getintfield_default(L, 3, "width", 0);
+		height = getintfield_default(L, 3, "height", 0);
+		fps = getintfield_default(L, 3, "fps", fps);
+	}
+
+#ifdef __ANDROID__
+	htmlview_jni_bind_texture(id, texture_name, width, height, fps);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_unbind_texture(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+
+#ifdef __ANDROID__
+	htmlview_jni_unbind_texture(id);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_texture_name(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string digest = hashing::sha256(id);
+	std::string hex = hex_encode(digest);
+	std::string short_hex = hex.substr(0, 16);
+	std::string name = "__htmlview__" + short_hex + ".png";
+	lua_pushlstring(L, name.c_str(), name.size());
+	return 1;
+}
+
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -287,6 +337,9 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	registerFunction(L, "inject", l_inject, tbl);
 	registerFunction(L, "pipe", l_pipe, tbl);
 	registerFunction(L, "capture", l_capture, tbl);
+	registerFunction(L, "bind_texture", l_bind_texture, tbl);
+	registerFunction(L, "unbind_texture", l_unbind_texture, tbl);
+	registerFunction(L, "texture_name", l_texture_name, tbl);
 	registerFunction(L, "on_message", l_on_message, tbl);
 	registerFunction(L, "on_capture", l_on_capture, tbl);
 

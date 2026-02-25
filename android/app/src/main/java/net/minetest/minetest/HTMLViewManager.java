@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.graphics.Outline;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -52,6 +54,8 @@ public class HTMLViewManager {
 	private final ViewGroup root;
 	private final HashMap<String, HtmlViewState> views = new HashMap<>();
 	private final HashMap<String, String> pipes = new HashMap<>();
+	private final Handler handler = new Handler(Looper.getMainLooper());
+	private final HashMap<String, TextureLoop> textureLoops = new HashMap<>();
 
 	public HTMLViewManager(GameActivity activity, ViewGroup root) {
 		this.activity = activity;
@@ -70,6 +74,13 @@ public class HTMLViewManager {
 				} catch (Exception ignored) {
 				}
 			}
+			for (TextureLoop loop : textureLoops.values()) {
+				try {
+					handler.removeCallbacks(loop.runnable);
+				} catch (Exception ignored) {
+				}
+			}
+			textureLoops.clear();
 			views.clear();
 			pipes.clear();
 		});
@@ -256,50 +267,107 @@ public class HTMLViewManager {
 			HtmlViewState st = views.get(id);
 			if (st == null)
 				return;
-			WebView wv = st.webView;
+			captureToNativeOnUiThread(id, st, width, height);
+		});
+	}
 
-			int w = width > 0 ? width : wv.getWidth();
-			int h = height > 0 ? height : wv.getHeight();
-			if (w <= 0)
-				w = st.container.getWidth();
-			if (h <= 0)
-				h = st.container.getHeight();
-			if (w <= 0)
-				w = 256;
-			if (h <= 0)
-				h = 256;
+	public void htmlview_bind_texture(String id, int width, int height, int fps) {
+		activity.runOnUiThread(() -> {
+			getOrCreate(id);
 
-			w = Math.min(w, 2048);
-			h = Math.min(h, 2048);
+			int f = fps <= 0 ? 10 : fps;
+			int intervalMs = Math.max(33, 1000 / Math.max(1, f));
+			int w = Math.max(0, width);
+			int h = Math.max(0, height);
 
-			try {
-				Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-				Canvas canvas = new Canvas(bmp);
-				int vw = wv.getWidth();
-				int vh = wv.getHeight();
-				if (vw > 0 && vh > 0) {
-					float sx = w / (float) vw;
-					float sy = h / (float) vh;
-					canvas.save();
-					canvas.scale(sx, sy);
-					wv.draw(canvas);
-					canvas.restore();
-				} else {
-					int ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
-					int hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
-					wv.measure(ws, hs);
-					wv.layout(0, 0, w, h);
-					wv.draw(canvas);
+			TextureLoop existing = textureLoops.get(id);
+			if (existing != null) {
+				existing.width = w;
+				existing.height = h;
+				existing.intervalMs = intervalMs;
+				handler.removeCallbacks(existing.runnable);
+				handler.post(existing.runnable);
+				return;
+			}
+
+			TextureLoop loop = new TextureLoop();
+			loop.width = w;
+			loop.height = h;
+			loop.intervalMs = intervalMs;
+			loop.runnable = new Runnable() {
+				@Override
+				public void run() {
+					TextureLoop l = textureLoops.get(id);
+					if (l == null)
+						return;
+					HtmlViewState st = views.get(id);
+					if (st != null)
+						captureToNativeOnUiThread(id, st, l.width, l.height);
+					handler.postDelayed(this, l.intervalMs);
 				}
+			};
 
-				ByteArrayOutputStream out = new ByteArrayOutputStream();
-				bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
-				bmp.recycle();
-				String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-				nativeOnHTMLCapture(id, b64);
-			} catch (Exception ignored) {
+			textureLoops.put(id, loop);
+			handler.post(loop.runnable);
+		});
+	}
+
+	public void htmlview_unbind_texture(String id) {
+		activity.runOnUiThread(() -> {
+			TextureLoop loop = textureLoops.remove(id);
+			if (loop != null) {
+				try {
+					handler.removeCallbacks(loop.runnable);
+				} catch (Exception ignored) {
+				}
 			}
 		});
+	}
+
+	private void captureToNativeOnUiThread(String id, HtmlViewState st, int width, int height) {
+		WebView wv = st.webView;
+
+		int w = width > 0 ? width : wv.getWidth();
+		int h = height > 0 ? height : wv.getHeight();
+		if (w <= 0)
+			w = st.container.getWidth();
+		if (h <= 0)
+			h = st.container.getHeight();
+		if (w <= 0)
+			w = 256;
+		if (h <= 0)
+			h = 256;
+
+		w = Math.min(w, 2048);
+		h = Math.min(h, 2048);
+
+		try {
+			Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+			Canvas canvas = new Canvas(bmp);
+			int vw = wv.getWidth();
+			int vh = wv.getHeight();
+			if (vw > 0 && vh > 0) {
+				float sx = w / (float) vw;
+				float sy = h / (float) vh;
+				canvas.save();
+				canvas.scale(sx, sy);
+				wv.draw(canvas);
+				canvas.restore();
+			} else {
+				int ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
+				int hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
+				wv.measure(ws, hs);
+				wv.layout(0, 0, w, h);
+				wv.draw(canvas);
+			}
+
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			bmp.compress(Bitmap.CompressFormat.PNG, 100, out);
+			bmp.recycle();
+			String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+			nativeOnHTMLCapture(id, b64);
+		} catch (Exception ignored) {
+		}
 	}
 
 	private HtmlViewState getOrCreate(String id) {
@@ -679,6 +747,13 @@ public class HTMLViewManager {
 				return null;
 			}
 		}
+	}
+
+	private static class TextureLoop {
+		int width;
+		int height;
+		int intervalMs;
+		Runnable runnable;
 	}
 
 	private static class HtmlViewState {

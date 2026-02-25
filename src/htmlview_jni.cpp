@@ -5,7 +5,14 @@
 
 #include "htmlview_jni.h"
 
+#include "config.h"
 #include "log.h"
+#include "util/base64.h"
+
+#if CHECK_CLIENT_BUILD()
+#include "client/renderingengine.h"
+#include "client/texturesource.h"
+#endif
 
 #include <jni.h>
 #define SDL_MAIN_HANDLED 1
@@ -13,6 +20,28 @@
 
 #include <deque>
 #include <mutex>
+#include <unordered_map>
+
+struct HtmlViewMessage {
+	std::string id;
+	std::string message;
+};
+
+struct HtmlViewCapture {
+	std::string id;
+	std::string png_base64;
+};
+
+struct HtmlViewTextureFrame {
+	std::string id;
+	std::string png_base64;
+};
+
+static std::mutex g_msg_mutex;
+static std::deque<HtmlViewMessage> g_messages;
+static std::deque<HtmlViewCapture> g_captures;
+static std::deque<HtmlViewTextureFrame> g_texture_frames;
+static std::unordered_map<std::string, std::string> g_texture_bindings;
 
 static std::string readJavaString(JNIEnv *env, jstring j_str)
 {
@@ -147,6 +176,33 @@ static void callVoidMethod1Str2Int(const char *method_name, const std::string &a
 	env->DeleteLocalRef(activityClass);
 }
 
+static void callVoidMethod1Str3Int(const char *method_name, const std::string &a,
+		int b, int c, int d)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return;
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name,
+		"(Ljava/lang/String;III)V");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return;
+	}
+
+	jstring ja = env->NewStringUTF(a.c_str());
+	jint jb = b;
+	jint jc = c;
+	jint jd = d;
+	env->CallVoidMethod(activity, mid, ja, jb, jc, jd);
+	if (ja)
+		env->DeleteLocalRef(ja);
+	env->DeleteLocalRef(activityClass);
+}
+
 void htmlview_jni_run(const std::string &id, const std::string &html)
 {
 	callVoidMethod2Str("htmlview_run", id, html);
@@ -223,6 +279,31 @@ void htmlview_jni_capture(const std::string &id, int width, int height)
 	callVoidMethod1Str2Int("htmlview_capture", id, width, height);
 }
 
+void htmlview_jni_bind_texture(const std::string &id, const std::string &texture_name,
+		int width, int height, int fps)
+{
+	if (fps <= 0)
+		fps = 10;
+	if (width < 0)
+		width = 0;
+	if (height < 0)
+		height = 0;
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		g_texture_bindings[id] = texture_name;
+	}
+	callVoidMethod1Str3Int("htmlview_bind_texture", id, width, height, fps);
+}
+
+void htmlview_jni_unbind_texture(const std::string &id)
+{
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		g_texture_bindings.erase(id);
+	}
+	callVoidMethod1Str("htmlview_unbind_texture", id);
+}
+
 #if 0
 void htmlview_jni_inject(const std::string &id, const std::string &js)
 {
@@ -235,19 +316,6 @@ void htmlview_jni_pipe(const std::string &fromId, const std::string &toId)
 }
 #endif
 
-struct HtmlViewMessage {
-	std::string id;
-	std::string message;
-};
-
-struct HtmlViewCapture {
-	std::string id;
-	std::string png_base64;
-};
-
-static std::mutex g_msg_mutex;
-static std::deque<HtmlViewMessage> g_messages;
-static std::deque<HtmlViewCapture> g_captures;
 
 extern "C" JNIEXPORT void JNICALL
 Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLMessage(
@@ -272,6 +340,13 @@ Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLCapture(
 	{
 		std::lock_guard<std::mutex> lock(g_msg_mutex);
 		g_captures.push_back(std::move(c));
+		const auto &back = g_captures.back();
+		if (g_texture_bindings.find(back.id) != g_texture_bindings.end()) {
+			HtmlViewTextureFrame tf;
+			tf.id = back.id;
+			tf.png_base64 = back.png_base64;
+			g_texture_frames.push_back(std::move(tf));
+		}
 	}
 }
 
@@ -294,6 +369,61 @@ void htmlview_jni_poll(ServerScripting *script)
 	for (const auto &c : cap_batch) {
 		script->on_htmlview_capture(c.id, c.png_base64);
 	}
+}
+
+void htmlview_jni_poll_textures(IWritableTextureSource *tsrc)
+{
+#if CHECK_CLIENT_BUILD()
+	if (!tsrc)
+		return;
+	std::deque<HtmlViewTextureFrame> frames;
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		frames.swap(g_texture_frames);
+	}
+	if (frames.empty())
+		return;
+
+	auto *device = RenderingEngine::get_raw_device();
+	auto *fs = device->getFileSystem();
+	auto *vd = device->getVideoDriver();
+	if (!fs || !vd)
+		return;
+
+	for (auto &f : frames) {
+		std::string texture_name;
+		{
+			std::lock_guard<std::mutex> lock(g_msg_mutex);
+			auto it = g_texture_bindings.find(f.id);
+			if (it == g_texture_bindings.end())
+				continue;
+			texture_name = it->second;
+		}
+
+		if (!base64_is_valid(f.png_base64))
+			continue;
+		std::string png = base64_decode(f.png_base64);
+		auto *memfile = fs->createMemoryReadFile(png.data(), png.size(), "[htmlview_tex");
+		video::IImage *pngimg = vd->createImageFromFile(memfile);
+		memfile->drop();
+		if (!pngimg)
+			continue;
+
+		video::IImage *img = pngimg;
+		if (pngimg->getColorFormat() != video::ECF_A8R8G8B8) {
+			img = vd->createImage(video::ECF_A8R8G8B8, pngimg->getDimension());
+			if (img)
+				pngimg->copyTo(img);
+			pngimg->drop();
+			if (!img)
+				continue;
+		}
+
+		tsrc->insertSourceImage(texture_name, img);
+	}
+#else
+	(void)tsrc;
+#endif
 }
 
 #endif // __ANDROID__
