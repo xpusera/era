@@ -115,13 +115,14 @@ luanti.on_message(function(m){
 end
 
 local function start_node_texture(name)
-	start_external(name)
+	local root = get_ui_root()
+	htmlview.run_external(ids.screen, root, "index.html")
 	if type(htmlview.bind_texture) ~= "function" then
 		msg(name, "bind_texture not available")
 		return
 	end
-	htmlview.bind_texture(ids.external, screen_texname, { width = 256, height = 256, fps = 10 })
-	msg(name, "node texture binding started: " .. screen_texname .. " (place node " .. modname .. ":screen)")
+	htmlview.bind_texture(ids.screen, screen_texname, { width = 256, height = 256, fps = 30 })
+	msg(name, "node texture binding started (offscreen): " .. screen_texname .. " (place node " .. modname .. ":screen)")
 end
 
 local function stop_all(name)

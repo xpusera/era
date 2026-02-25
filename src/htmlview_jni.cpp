@@ -12,7 +12,6 @@
 #if CHECK_CLIENT_BUILD()
 #include "client/renderingengine.h"
 #include "client/texturesource.h"
-#include <IFileSystem.h>
 #endif
 
 #include <jni.h>
@@ -22,6 +21,9 @@
 #include <deque>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
+#include <cstdint>
+#include <cstring>
 
 struct HtmlViewMessage {
 	std::string id;
@@ -33,15 +35,16 @@ struct HtmlViewCapture {
 	std::string png_base64;
 };
 
-struct HtmlViewTextureFrame {
-	std::string id;
-	std::string png_base64;
+struct HtmlViewTextureFrameRaw {
+	int width = 0;
+	int height = 0;
+	std::vector<std::uint32_t> argb;
 };
 
 static std::mutex g_msg_mutex;
 static std::deque<HtmlViewMessage> g_messages;
 static std::deque<HtmlViewCapture> g_captures;
-static std::deque<HtmlViewTextureFrame> g_texture_frames;
+static std::unordered_map<std::string, HtmlViewTextureFrameRaw> g_texture_latest;
 static std::unordered_map<std::string, std::string> g_texture_bindings;
 
 static std::string readJavaString(JNIEnv *env, jstring j_str)
@@ -341,13 +344,45 @@ Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLCapture(
 	{
 		std::lock_guard<std::mutex> lock(g_msg_mutex);
 		g_captures.push_back(std::move(c));
-		const auto &back = g_captures.back();
-		if (g_texture_bindings.find(back.id) != g_texture_bindings.end()) {
-			HtmlViewTextureFrame tf;
-			tf.id = back.id;
-			tf.png_base64 = back.png_base64;
-			g_texture_frames.push_back(std::move(tf));
-		}
+	}
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLTextureFrame(
+		JNIEnv *env, jclass, jstring id, jint width, jint height, jintArray argb)
+{
+	std::string sid = readJavaString(env, id);
+	if (sid.empty() || width <= 0 || height <= 0 || !argb)
+		return;
+
+	size_t pixcount = (size_t)width * (size_t)height;
+	jsize len = env->GetArrayLength(argb);
+	if (pixcount == 0 || (size_t)len < pixcount)
+		return;
+
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		if (g_texture_bindings.find(sid) == g_texture_bindings.end())
+			return;
+	}
+
+	jint *elems = env->GetIntArrayElements(argb, nullptr);
+	if (!elems)
+		return;
+
+	HtmlViewTextureFrameRaw fr;
+	fr.width = width;
+	fr.height = height;
+	fr.argb.resize(pixcount);
+	std::memcpy(fr.argb.data(), elems, pixcount * sizeof(std::uint32_t));
+	env->ReleaseIntArrayElements(argb, elems, JNI_ABORT);
+
+	{
+		std::lock_guard<std::mutex> lock(g_msg_mutex);
+		auto it = g_texture_bindings.find(sid);
+		if (it == g_texture_bindings.end())
+			return;
+		g_texture_latest[sid] = std::move(fr);
 	}
 }
 
@@ -377,48 +412,39 @@ void htmlview_jni_poll_textures(IWritableTextureSource *tsrc)
 #if CHECK_CLIENT_BUILD()
 	if (!tsrc)
 		return;
-	std::deque<HtmlViewTextureFrame> frames;
+	std::unordered_map<std::string, HtmlViewTextureFrameRaw> frames;
 	{
 		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		frames.swap(g_texture_frames);
+		frames.swap(g_texture_latest);
 	}
 	if (frames.empty())
 		return;
 
 	auto *device = RenderingEngine::get_raw_device();
-	auto *fs = device->getFileSystem();
-	auto *vd = device->getVideoDriver();
-	if (!fs || !vd)
+	auto *vd = device ? device->getVideoDriver() : nullptr;
+	if (!vd)
 		return;
 
-	for (auto &f : frames) {
+	for (auto &kv : frames) {
+		const std::string &id = kv.first;
+		auto &fr = kv.second;
+		if (fr.width <= 0 || fr.height <= 0 || fr.argb.empty())
+			continue;
+
 		std::string texture_name;
 		{
 			std::lock_guard<std::mutex> lock(g_msg_mutex);
-			auto it = g_texture_bindings.find(f.id);
+			auto it = g_texture_bindings.find(id);
 			if (it == g_texture_bindings.end())
 				continue;
 			texture_name = it->second;
 		}
 
-		if (!base64_is_valid(f.png_base64))
+		video::IImage *img = vd->createImage(video::ECF_A8R8G8B8,
+				core::dimension2d<u32>((u32)fr.width, (u32)fr.height));
+		if (!img)
 			continue;
-		std::string png = base64_decode(f.png_base64);
-		auto *memfile = fs->createMemoryReadFile(png.data(), png.size(), "[htmlview_tex");
-		video::IImage *pngimg = vd->createImageFromFile(memfile);
-		memfile->drop();
-		if (!pngimg)
-			continue;
-
-		video::IImage *img = pngimg;
-		if (pngimg->getColorFormat() != video::ECF_A8R8G8B8) {
-			img = vd->createImage(video::ECF_A8R8G8B8, pngimg->getDimension());
-			if (img)
-				pngimg->copyTo(img);
-			pngimg->drop();
-			if (!img)
-				continue;
-		}
+		std::memcpy(img->getData(), fr.argb.data(), fr.argb.size() * sizeof(std::uint32_t));
 
 		tsrc->insertSourceImage(texture_name, img);
 	}

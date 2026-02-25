@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -79,6 +80,15 @@ public class HTMLViewManager {
 					handler.removeCallbacks(loop.runnable);
 				} catch (Exception ignored) {
 				}
+				try {
+					if (loop.bmp != null) {
+						loop.bmp.recycle();
+						loop.bmp = null;
+					}
+				} catch (Exception ignored) {
+				}
+				loop.canvas = null;
+				loop.pixels = null;
 			}
 			textureLoops.clear();
 			views.clear();
@@ -267,7 +277,7 @@ public class HTMLViewManager {
 			HtmlViewState st = views.get(id);
 			if (st == null)
 				return;
-			captureToNativeOnUiThread(id, st, width, height);
+			capturePngToNativeOnUiThread(id, st, width, height);
 		});
 	}
 
@@ -276,7 +286,7 @@ public class HTMLViewManager {
 			getOrCreate(id);
 
 			int f = fps <= 0 ? 10 : fps;
-			int intervalMs = Math.max(33, 1000 / Math.max(1, f));
+			int intervalMs = Math.max(16, 1000 / Math.max(1, f));
 			int w = Math.max(0, width);
 			int h = Math.max(0, height);
 
@@ -302,7 +312,7 @@ public class HTMLViewManager {
 						return;
 					HtmlViewState st = views.get(id);
 					if (st != null)
-						captureToNativeOnUiThread(id, st, l.width, l.height);
+						captureTextureToNativeOnUiThread(id, st, l);
 					handler.postDelayed(this, l.intervalMs);
 				}
 			};
@@ -320,11 +330,20 @@ public class HTMLViewManager {
 					handler.removeCallbacks(loop.runnable);
 				} catch (Exception ignored) {
 				}
+				try {
+					if (loop.bmp != null) {
+						loop.bmp.recycle();
+						loop.bmp = null;
+					}
+				} catch (Exception ignored) {
+				}
+				loop.canvas = null;
+				loop.pixels = null;
 			}
 		});
 	}
 
-	private void captureToNativeOnUiThread(String id, HtmlViewState st, int width, int height) {
+	private void capturePngToNativeOnUiThread(String id, HtmlViewState st, int width, int height) {
 		WebView wv = st.webView;
 
 		int w = width > 0 ? width : wv.getWidth();
@@ -366,6 +385,63 @@ public class HTMLViewManager {
 			bmp.recycle();
 			String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
 			nativeOnHTMLCapture(id, b64);
+		} catch (Exception ignored) {
+		}
+	}
+
+	private void captureTextureToNativeOnUiThread(String id, HtmlViewState st, TextureLoop loop) {
+		WebView wv = st.webView;
+
+		int w = loop.width > 0 ? loop.width : wv.getWidth();
+		int h = loop.height > 0 ? loop.height : wv.getHeight();
+		if (w <= 0)
+			w = st.container.getWidth();
+		if (h <= 0)
+			h = st.container.getHeight();
+		if (w <= 0)
+			w = 256;
+		if (h <= 0)
+			h = 256;
+
+		w = Math.min(w, 2048);
+		h = Math.min(h, 2048);
+
+		try {
+			if (loop.bmp == null || loop.bmp.getWidth() != w || loop.bmp.getHeight() != h) {
+				if (loop.bmp != null)
+					loop.bmp.recycle();
+				loop.bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+				loop.canvas = new Canvas(loop.bmp);
+				loop.pixels = new int[w * h];
+			}
+
+			Canvas canvas = loop.canvas;
+			if (canvas == null)
+				return;
+
+			canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+
+			int vw = wv.getWidth();
+			int vh = wv.getHeight();
+			if (vw > 0 && vh > 0) {
+				float sx = w / (float) vw;
+				float sy = h / (float) vh;
+				canvas.save();
+				canvas.scale(sx, sy);
+				wv.draw(canvas);
+				canvas.restore();
+			} else {
+				int ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
+				int hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
+				wv.measure(ws, hs);
+				wv.layout(0, 0, w, h);
+				wv.draw(canvas);
+			}
+
+			if (loop.pixels == null || loop.pixels.length < w * h)
+				loop.pixels = new int[w * h];
+			loop.bmp.getPixels(loop.pixels, 0, w, 0, 0, w, h);
+			nativeOnHTMLTextureFrame(id, w, h, loop.pixels);
 		} catch (Exception ignored) {
 		}
 	}
@@ -754,6 +830,9 @@ public class HTMLViewManager {
 		int height;
 		int intervalMs;
 		Runnable runnable;
+		Bitmap bmp;
+		Canvas canvas;
+		int[] pixels;
 	}
 
 	private static class HtmlViewState {
@@ -808,4 +887,5 @@ public class HTMLViewManager {
 
 	private static native void nativeOnHTMLMessage(String id, String message);
 	private static native void nativeOnHTMLCapture(String id, String pngBase64);
+	private static native void nativeOnHTMLTextureFrame(String id, int width, int height, int[] argb);
 }
