@@ -201,7 +201,7 @@ end
 minetest.register_chatcommand("htmlview_demo", {
 	params = "overlay | external | pipe | node | stop",
 	description = "HTMLView demo commands",
-	privs = { server = true },
+	privs = { interact = true },
 	func = function(name, param)
 		if not is_android_htmlview() then
 			msg(name, "htmlview is Android-only")
