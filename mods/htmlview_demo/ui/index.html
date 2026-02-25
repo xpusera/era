@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HTMLView External Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="frame">
+    <div class="header">
+      <div class="title">HTMLView External Mode</div>
+      <div class="sub">WASM + messaging + node-texture rendering</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="cardTitle">WASM</div>
+        <div class="row">
+          <input id="a" type="number" value="7" />
+          <span class="op">+</span>
+          <input id="b" type="number" value="35" />
+          <button id="run">run</button>
+        </div>
+        <div class="out">result: <span id="out">?</span></div>
+        <div class="hint">Loads <code>add.wasm</code> via fetch() (needs application/wasm).</div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">Send message to Lua</div>
+        <div class="row">
+          <input id="msg" value="hello from external" />
+          <button id="send">send</button>
+        </div>
+        <div class="out">last from Lua: <span id="fromLua">(none)</span></div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">Render</div>
+        <div class="out">
+          If this page is bound to a node texture, placing the demo node should show live updates.
+        </div>
+        <div class="row">
+          <button id="pulse">pulse bg</button>
+          <button id="dark">dark</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button id="ping">ping lua</button>
+      <button id="reqCapture">request capture</button>
+      <a class="link" href="other.html">navigate internal page</a>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
