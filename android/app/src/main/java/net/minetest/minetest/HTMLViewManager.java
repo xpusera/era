@@ -4,7 +4,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
-import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -56,7 +55,6 @@ public class HTMLViewManager {
 	private final HashMap<String, HtmlViewState> views = new HashMap<>();
 	private final HashMap<String, String> pipes = new HashMap<>();
 	private final Handler handler = new Handler(Looper.getMainLooper());
-	private final HashMap<String, TextureLoop> textureLoops = new HashMap<>();
 
 	public HTMLViewManager(GameActivity activity, ViewGroup root) {
 		this.activity = activity;
@@ -75,22 +73,6 @@ public class HTMLViewManager {
 				} catch (Exception ignored) {
 				}
 			}
-			for (TextureLoop loop : textureLoops.values()) {
-				try {
-					handler.removeCallbacks(loop.runnable);
-				} catch (Exception ignored) {
-				}
-				try {
-					if (loop.bmp != null) {
-						loop.bmp.recycle();
-						loop.bmp = null;
-					}
-				} catch (Exception ignored) {
-				}
-				loop.canvas = null;
-				loop.pixels = null;
-			}
-			textureLoops.clear();
 			views.clear();
 			pipes.clear();
 		});
@@ -281,158 +263,6 @@ public class HTMLViewManager {
 		});
 	}
 
-	public void htmlview_bind_texture(String id, int width, int height, int fps) {
-		activity.runOnUiThread(() -> {
-			HtmlViewState st0 = getOrCreate(id);
-
-			int f = fps <= 0 ? 10 : fps;
-			int intervalMs = Math.max(16, 1000 / Math.max(1, f));
-			int w = Math.max(0, width);
-			int h = Math.max(0, height);
-
-			int offW = w > 0 ? w : 256;
-			int offH = h > 0 ? h : 256;
-
-			TextureLoop existing = textureLoops.get(id);
-			if (existing != null) {
-				existing.width = w;
-				existing.height = h;
-				existing.intervalMs = intervalMs;
-				if (existing.offscreenApplied) {
-					try {
-						HtmlViewState st = views.get(id);
-						if (st != null && st.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-							FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) st.container.getLayoutParams();
-							lp.width = Math.max(1, offW);
-							lp.height = Math.max(1, offH);
-							st.container.setLayoutParams(lp);
-						}
-					} catch (Exception ignored) {
-					}
-				}
-				handler.removeCallbacks(existing.runnable);
-				handler.post(existing.runnable);
-				return;
-			}
-
-			TextureLoop loop = new TextureLoop();
-			loop.width = w;
-			loop.height = h;
-			loop.intervalMs = intervalMs;
-
-			try {
-				int vis = st0.container.getVisibility();
-				if (vis != View.VISIBLE) {
-					loop.offscreenApplied = true;
-					loop.prevVisibility = vis;
-					loop.prevAlpha = st0.container.getAlpha();
-					loop.prevLayerType = st0.webView.getLayerType();
-					if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-						FrameLayout.LayoutParams prev = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
-						loop.prevWidth = prev.width;
-						loop.prevHeight = prev.height;
-						loop.prevLeftMargin = prev.leftMargin;
-						loop.prevTopMargin = prev.topMargin;
-						loop.prevRightMargin = prev.rightMargin;
-						loop.prevBottomMargin = prev.bottomMargin;
-						loop.prevGravity = prev.gravity;
-					}
-
-					st0.container.setVisibility(View.VISIBLE);
-					st0.container.setAlpha(0.0f);
-					st0.container.setEnabled(false);
-					st0.container.setClickable(false);
-					st0.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-
-					FrameLayout.LayoutParams lp;
-					if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-						lp = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
-					} else {
-						lp = new FrameLayout.LayoutParams(1, 1);
-					}
-					lp.gravity = Gravity.TOP | Gravity.START;
-					lp.width = Math.max(1, offW);
-					lp.height = Math.max(1, offH);
-					lp.leftMargin = -10000;
-					lp.topMargin = -10000;
-					lp.rightMargin = 0;
-					lp.bottomMargin = 0;
-					st0.container.setLayoutParams(lp);
-					setDragEnabled(st0, false);
-				}
-			} catch (Exception ignored) {
-			}
-
-			try {
-				int[] ph = new int[] { 0xFF101014, 0xFF101014, 0xFF101014, 0xFF101014 };
-				nativeOnHTMLTextureFrame(id, 2, 2, ph);
-			} catch (Exception ignored) {
-			}
-
-			loop.runnable = new Runnable() {
-				@Override
-				public void run() {
-					TextureLoop l = textureLoops.get(id);
-					if (l == null)
-						return;
-					HtmlViewState st = views.get(id);
-					if (st != null)
-						captureTextureToNativeOnUiThread(id, st, l);
-					handler.postDelayed(this, l.intervalMs);
-				}
-			};
-
-			textureLoops.put(id, loop);
-			handler.post(loop.runnable);
-		});
-	}
-
-	public void htmlview_unbind_texture(String id) {
-		activity.runOnUiThread(() -> {
-			TextureLoop loop = textureLoops.remove(id);
-			if (loop != null) {
-				try {
-					handler.removeCallbacks(loop.runnable);
-				} catch (Exception ignored) {
-				}
-				try {
-					if (loop.bmp != null) {
-						loop.bmp.recycle();
-						loop.bmp = null;
-					}
-				} catch (Exception ignored) {
-				}
-				loop.canvas = null;
-				loop.pixels = null;
-
-				if (loop.offscreenApplied) {
-					try {
-						HtmlViewState st = views.get(id);
-						if (st != null) {
-							st.webView.setLayerType(loop.prevLayerType, null);
-							if (st.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-								FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) st.container.getLayoutParams();
-								lp.width = loop.prevWidth;
-								lp.height = loop.prevHeight;
-								lp.leftMargin = loop.prevLeftMargin;
-								lp.topMargin = loop.prevTopMargin;
-								lp.rightMargin = loop.prevRightMargin;
-								lp.bottomMargin = loop.prevBottomMargin;
-								lp.gravity = loop.prevGravity;
-								st.container.setLayoutParams(lp);
-							}
-							st.container.setAlpha(loop.prevAlpha);
-							st.container.setEnabled(true);
-							st.container.setClickable(true);
-							st.container.setVisibility(loop.prevVisibility);
-						}
-					} catch (Exception ignored) {
-					}
-				}
-			}
-		});
-	}
-
 	private void capturePngToNativeOnUiThread(String id, HtmlViewState st, int width, int height) {
 		WebView wv = st.webView;
 
@@ -475,63 +305,6 @@ public class HTMLViewManager {
 			bmp.recycle();
 			String b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
 			nativeOnHTMLCapture(id, b64);
-		} catch (Exception ignored) {
-		}
-	}
-
-	private void captureTextureToNativeOnUiThread(String id, HtmlViewState st, TextureLoop loop) {
-		WebView wv = st.webView;
-
-		int w = loop.width > 0 ? loop.width : wv.getWidth();
-		int h = loop.height > 0 ? loop.height : wv.getHeight();
-		if (w <= 0)
-			w = st.container.getWidth();
-		if (h <= 0)
-			h = st.container.getHeight();
-		if (w <= 0)
-			w = 256;
-		if (h <= 0)
-			h = 256;
-
-		w = Math.min(w, 2048);
-		h = Math.min(h, 2048);
-
-		try {
-			if (loop.bmp == null || loop.bmp.getWidth() != w || loop.bmp.getHeight() != h) {
-				if (loop.bmp != null)
-					loop.bmp.recycle();
-				loop.bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-				loop.canvas = new Canvas(loop.bmp);
-				loop.pixels = new int[w * h];
-			}
-
-			Canvas canvas = loop.canvas;
-			if (canvas == null)
-				return;
-
-			canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-
-			int vw = wv.getWidth();
-			int vh = wv.getHeight();
-			if (vw > 0 && vh > 0) {
-				float sx = w / (float) vw;
-				float sy = h / (float) vh;
-				canvas.save();
-				canvas.scale(sx, sy);
-				wv.draw(canvas);
-				canvas.restore();
-			} else {
-				int ws = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY);
-				int hs = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY);
-				wv.measure(ws, hs);
-				wv.layout(0, 0, w, h);
-				wv.draw(canvas);
-			}
-
-			if (loop.pixels == null || loop.pixels.length < w * h)
-				loop.pixels = new int[w * h];
-			loop.bmp.getPixels(loop.pixels, 0, w, 0, 0, w, h);
-			nativeOnHTMLTextureFrame(id, w, h, loop.pixels);
 		} catch (Exception ignored) {
 		}
 	}
@@ -915,28 +688,6 @@ public class HTMLViewManager {
 		}
 	}
 
-	private static class TextureLoop {
-		int width;
-		int height;
-		int intervalMs;
-		Runnable runnable;
-		Bitmap bmp;
-		Canvas canvas;
-		int[] pixels;
-
-		boolean offscreenApplied;
-		int prevVisibility;
-		float prevAlpha;
-		int prevLayerType;
-		int prevWidth;
-		int prevHeight;
-		int prevLeftMargin;
-		int prevTopMargin;
-		int prevRightMargin;
-		int prevBottomMargin;
-		int prevGravity;
-	}
-
 	private static class HtmlViewState {
 		final String id;
 		final String host;
@@ -989,5 +740,4 @@ public class HTMLViewManager {
 
 	private static native void nativeOnHTMLMessage(String id, String message);
 	private static native void nativeOnHTMLCapture(String id, String pngBase64);
-	private static native void nativeOnHTMLTextureFrame(String id, int width, int height, int[] argb);
 }

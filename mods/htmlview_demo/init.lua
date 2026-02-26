@@ -14,7 +14,6 @@ local ids = {
 	external = modname .. ":external",
 	pipe_a = modname .. ":pipe_a",
 	pipe_b = modname .. ":pipe_b",
-	screen = modname .. ":screen",
 }
 
 local state = { mode = nil }
@@ -24,28 +23,6 @@ local stop_all
 local function get_ui_root()
 	return minetest.get_modpath(modname) .. "/ui"
 end
-
-local screen_texname
-if is_android_htmlview() and type(htmlview.texture_name) == "function" then
-	screen_texname = htmlview.texture_name(ids.screen)
-else
-	screen_texname = "unknown.png"
-end
-
-minetest.register_node(modname .. ":screen", {
-	description = S("HTMLView Screen (node texture)"),
-	tiles = { screen_texname },
-	drawtype = "nodebox",
-	paramtype = "light",
-	light_source = 4,
-	groups = { cracky = 2, oddly_breakable_by_hand = 2 },
-	node_box = {
-		type = "fixed",
-		fixed = {
-			{-0.5, -0.5,  0.48,  0.5,  0.5,  0.5},
-		},
-	},
-})
 
 local overlay_html = [[
 <!doctype html>
@@ -121,24 +98,10 @@ luanti.on_message(function(m){
 	msg(name, "pipe demo started")
 end
 
-local function start_node_texture(name)
-	state.mode = "node"
-	stop_all(name)
-	local root = get_ui_root()
-	htmlview.run_external(ids.screen, root, "index.html")
-	if type(htmlview.bind_texture) ~= "function" then
-		msg(name, "bind_texture not available")
-		return
-	end
-	htmlview.bind_texture(ids.screen, screen_texname, { width = 256, height = 256, fps = 30 })
-	msg(name, "node texture binding started (place node " .. modname .. ":screen)")
-end
-
 stop_all = function(name)
 	state.mode = nil
 	for _, id in pairs(ids) do
 		pcall(function() htmlview.stop(id) end)
-		pcall(function() htmlview.unbind_texture(id) end)
 	end
 	msg(name, "stopped")
 end
@@ -210,7 +173,7 @@ if is_android_htmlview() and type(htmlview.on_message) == "function" then
 end
 
 minetest.register_chatcommand("htmlview_demo", {
-	params = "overlay | external | pipe | node | stop",
+	params = "overlay | external | pipe | stop",
 	description = "HTMLView demo commands",
 	privs = { interact = true },
 	func = function(name, param)
@@ -231,14 +194,10 @@ minetest.register_chatcommand("htmlview_demo", {
 			start_pipe(name)
 			return
 		end
-		if param == "node" then
-			start_node_texture(name)
-			return
-		end
 		if param == "stop" then
 			stop_all(name)
 			return
 		end
-		msg(name, "usage: /htmlview_demo overlay|external|pipe|node|stop")
+		msg(name, "usage: /htmlview_demo overlay|external|pipe|stop")
 	end,
 })

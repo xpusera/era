@@ -7,12 +7,6 @@
 
 #include "config.h"
 #include "log.h"
-#include "util/base64.h"
-
-#if CHECK_CLIENT_BUILD()
-#include "client/renderingengine.h"
-#include "client/texturesource.h"
-#endif
 
 #include <jni.h>
 #define SDL_MAIN_HANDLED 1
@@ -21,9 +15,6 @@
 #include <deque>
 #include <mutex>
 #include <unordered_map>
-#include <vector>
-#include <cstdint>
-#include <cstring>
 
 struct HtmlViewMessage {
 	std::string id;
@@ -35,17 +26,9 @@ struct HtmlViewCapture {
 	std::string png_base64;
 };
 
-struct HtmlViewTextureFrameRaw {
-	int width = 0;
-	int height = 0;
-	std::vector<std::uint32_t> argb;
-};
-
 static std::mutex g_msg_mutex;
 static std::deque<HtmlViewMessage> g_messages;
 static std::deque<HtmlViewCapture> g_captures;
-static std::unordered_map<std::string, HtmlViewTextureFrameRaw> g_texture_latest;
-static std::unordered_map<std::string, std::string> g_texture_bindings;
 
 static std::string readJavaString(JNIEnv *env, jstring j_str)
 {
@@ -180,33 +163,6 @@ static void callVoidMethod1Str2Int(const char *method_name, const std::string &a
 	env->DeleteLocalRef(activityClass);
 }
 
-static void callVoidMethod1Str3Int(const char *method_name, const std::string &a,
-		int b, int c, int d)
-{
-	JNIEnv *env;
-	jobject activity;
-	jclass activityClass;
-	if (!getActivityEnv(&env, &activity, &activityClass))
-		return;
-
-	jmethodID mid = env->GetMethodID(activityClass, method_name,
-		"(Ljava/lang/String;III)V");
-	if (!mid) {
-		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
-		env->DeleteLocalRef(activityClass);
-		return;
-	}
-
-	jstring ja = env->NewStringUTF(a.c_str());
-	jint jb = b;
-	jint jc = c;
-	jint jd = d;
-	env->CallVoidMethod(activity, mid, ja, jb, jc, jd);
-	if (ja)
-		env->DeleteLocalRef(ja);
-	env->DeleteLocalRef(activityClass);
-}
-
 void htmlview_jni_run(const std::string &id, const std::string &html)
 {
 	callVoidMethod2Str("htmlview_run", id, html);
@@ -283,31 +239,6 @@ void htmlview_jni_capture(const std::string &id, int width, int height)
 	callVoidMethod1Str2Int("htmlview_capture", id, width, height);
 }
 
-void htmlview_jni_bind_texture(const std::string &id, const std::string &texture_name,
-		int width, int height, int fps)
-{
-	if (fps <= 0)
-		fps = 10;
-	if (width < 0)
-		width = 0;
-	if (height < 0)
-		height = 0;
-	{
-		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		g_texture_bindings[id] = texture_name;
-	}
-	callVoidMethod1Str3Int("htmlview_bind_texture", id, width, height, fps);
-}
-
-void htmlview_jni_unbind_texture(const std::string &id)
-{
-	{
-		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		g_texture_bindings.erase(id);
-	}
-	callVoidMethod1Str("htmlview_unbind_texture", id);
-}
-
 #if 0
 void htmlview_jni_inject(const std::string &id, const std::string &js)
 {
@@ -347,45 +278,6 @@ Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLCapture(
 	}
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_net_minetest_minetest_HTMLViewManager_nativeOnHTMLTextureFrame(
-		JNIEnv *env, jclass, jstring id, jint width, jint height, jintArray argb)
-{
-	std::string sid = readJavaString(env, id);
-	if (sid.empty() || width <= 0 || height <= 0 || !argb)
-		return;
-
-	size_t pixcount = (size_t)width * (size_t)height;
-	jsize len = env->GetArrayLength(argb);
-	if (pixcount == 0 || (size_t)len < pixcount)
-		return;
-
-	{
-		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		if (g_texture_bindings.find(sid) == g_texture_bindings.end())
-			return;
-	}
-
-	jint *elems = env->GetIntArrayElements(argb, nullptr);
-	if (!elems)
-		return;
-
-	HtmlViewTextureFrameRaw fr;
-	fr.width = width;
-	fr.height = height;
-	fr.argb.resize(pixcount);
-	std::memcpy(fr.argb.data(), elems, pixcount * sizeof(std::uint32_t));
-	env->ReleaseIntArrayElements(argb, elems, JNI_ABORT);
-
-	{
-		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		auto it = g_texture_bindings.find(sid);
-		if (it == g_texture_bindings.end())
-			return;
-		g_texture_latest[sid] = std::move(fr);
-	}
-}
-
 #include "scripting_server.h"
 
 void htmlview_jni_poll(ServerScripting *script)
@@ -405,53 +297,6 @@ void htmlview_jni_poll(ServerScripting *script)
 	for (const auto &c : cap_batch) {
 		script->on_htmlview_capture(c.id, c.png_base64);
 	}
-}
-
-void htmlview_jni_poll_textures(IWritableTextureSource *tsrc)
-{
-#if CHECK_CLIENT_BUILD()
-	if (!tsrc)
-		return;
-	std::unordered_map<std::string, HtmlViewTextureFrameRaw> frames;
-	{
-		std::lock_guard<std::mutex> lock(g_msg_mutex);
-		frames.swap(g_texture_latest);
-	}
-	if (frames.empty())
-		return;
-
-	auto *device = RenderingEngine::get_raw_device();
-	auto *vd = device ? device->getVideoDriver() : nullptr;
-	if (!vd)
-		return;
-
-	for (auto &kv : frames) {
-		const std::string &id = kv.first;
-		auto &fr = kv.second;
-		if (fr.width <= 0 || fr.height <= 0 || fr.argb.empty())
-			continue;
-
-		std::string texture_name;
-		{
-			std::lock_guard<std::mutex> lock(g_msg_mutex);
-			auto it = g_texture_bindings.find(id);
-			if (it == g_texture_bindings.end())
-				continue;
-			texture_name = it->second;
-		}
-
-		video::IImage *img = vd->createImage(video::ECF_A8R8G8B8,
-				core::dimension2d<u32>((u32)fr.width, (u32)fr.height));
-		if (!img)
-			continue;
-		std::memcpy(img->getData(), fr.argb.data(), fr.argb.size() * sizeof(std::uint32_t));
-
-		tsrc->insertSourceImage(texture_name, img);
-		img->drop();
-	}
-#else
-	(void)tsrc;
-#endif
 }
 
 #endif // __ANDROID__

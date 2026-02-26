@@ -1231,9 +1231,6 @@ void Game::processQueues()
 {
 	texture_src->processQueue();
 	shader_src->processQueue();
-#ifdef __ANDROID__
-	htmlview_jni_poll_textures(texture_src);
-#endif
 }
 
 void Game::updateDebugState()

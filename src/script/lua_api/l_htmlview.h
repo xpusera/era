@@ -17,9 +17,6 @@ private:
 	static int l_inject(lua_State *L);
 	static int l_pipe(lua_State *L);
 	static int l_capture(lua_State *L);
-	static int l_bind_texture(lua_State *L);
-	static int l_unbind_texture(lua_State *L);
-	static int l_texture_name(lua_State *L);
 	static int l_on_message(lua_State *L);
 	static int l_on_capture(lua_State *L);
 
