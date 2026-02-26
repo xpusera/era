@@ -283,12 +283,36 @@ public class HTMLViewManager {
 
 	public void htmlview_bind_texture(String id, int width, int height, int fps) {
 		activity.runOnUiThread(() -> {
-			getOrCreate(id);
+			HtmlViewState st0 = getOrCreate(id);
 
 			int f = fps <= 0 ? 10 : fps;
 			int intervalMs = Math.max(16, 1000 / Math.max(1, f));
 			int w = Math.max(0, width);
 			int h = Math.max(0, height);
+
+			// Texture binding is intended for offscreen rendering.
+			// Force-hide the view unless the modder explicitly calls htmlview_display again.
+			try {
+				st0.container.setVisibility(View.INVISIBLE);
+				int offW = w > 0 ? w : 256;
+				int offH = h > 0 ? h : 256;
+				FrameLayout.LayoutParams lp;
+				if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+					lp = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
+				} else {
+					lp = new FrameLayout.LayoutParams(1, 1);
+				}
+				lp.gravity = Gravity.TOP | Gravity.START;
+				lp.width = Math.max(1, offW);
+				lp.height = Math.max(1, offH);
+				lp.leftMargin = 0;
+				lp.topMargin = 0;
+				lp.rightMargin = 0;
+				lp.bottomMargin = 0;
+				st0.container.setLayoutParams(lp);
+				setDragEnabled(st0, false);
+			} catch (Exception ignored) {
+			}
 
 			TextureLoop existing = textureLoops.get(id);
 			if (existing != null) {

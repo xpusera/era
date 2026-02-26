@@ -17,6 +17,10 @@ local ids = {
 	screen = modname .. ":screen",
 }
 
+local state = { mode = nil }
+
+local stop_all
+
 local function get_ui_root()
 	return minetest.get_modpath(modname) .. "/ui"
 end
@@ -58,6 +62,7 @@ local overlay_html = [[
 ]]
 
 local function start_overlay(name)
+	state.mode = "overlay"
 	htmlview.run(ids.overlay, overlay_html)
 	htmlview.display(ids.overlay, {
 		visible = true,
@@ -73,6 +78,7 @@ local function start_overlay(name)
 end
 
 local function start_external(name)
+	state.mode = "external"
 	local root = get_ui_root()
 	htmlview.run_external(ids.external, root, "index.html")
 	htmlview.display(ids.external, {
@@ -89,6 +95,7 @@ local function start_external(name)
 end
 
 local function start_pipe(name)
+	state.mode = "pipe"
 	local html_a = [[
 <!doctype html><html><body style="margin:0;background:rgba(30,30,30,.55);display:flex;align-items:center;justify-content:center;height:100%;">
 <button style="padding:14px;font-size:16px;" onclick="luanti.send('pipe:color')">send to view B</button>
@@ -115,6 +122,8 @@ luanti.on_message(function(m){
 end
 
 local function start_node_texture(name)
+	state.mode = "node"
+	stop_all(name)
 	local root = get_ui_root()
 	htmlview.run_external(ids.screen, root, "index.html")
 	if type(htmlview.bind_texture) ~= "function" then
@@ -122,10 +131,11 @@ local function start_node_texture(name)
 		return
 	end
 	htmlview.bind_texture(ids.screen, screen_texname, { width = 256, height = 256, fps = 30 })
-	msg(name, "node texture binding started (offscreen): " .. screen_texname .. " (place node " .. modname .. ":screen)")
+	msg(name, "node texture binding started (place node " .. modname .. ":screen)")
 end
 
-local function stop_all(name)
+stop_all = function(name)
+	state.mode = nil
 	for _, id in pairs(ids) do
 		pcall(function() htmlview.stop(id) end)
 		pcall(function() htmlview.unbind_texture(id) end)
@@ -139,28 +149,14 @@ if is_android_htmlview() and type(htmlview.on_capture) == "function" then
 	htmlview.on_capture(ids.external, function(png)
 		for _, player in ipairs(minetest.get_connected_players()) do
 			local pname = player:get_player_name()
-			local filename = modname .. "_capture_" .. pname .. ".png"
 			minetest.dynamic_add_media({
-				filename = filename,
+				filename = screen_texname,
 				filedata = png,
 				to_player = pname,
 				ephemeral = true,
 				client_cache = false,
 			}, function()
-				local hudid = hud_by_player[pname]
-				if hudid then
-					player:hud_change(hudid, "text", filename)
-				else
-					hud_by_player[pname] = player:hud_add({
-						hud_elem_type = "image",
-						text = filename,
-						position = {x=0.02, y=0.20},
-						offset = {x=0, y=0},
-						scale = {x=2, y=2},
-						alignment = {x=1, y=1},
-					})
-				end
-				msg(pname, "capture received -> hud image updated")
+				msg(pname, "capture received -> node texture updated: " .. screen_texname)
 			end)
 		end
 	end)
