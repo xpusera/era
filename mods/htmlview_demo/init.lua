@@ -149,14 +149,28 @@ if is_android_htmlview() and type(htmlview.on_capture) == "function" then
 	htmlview.on_capture(ids.external, function(png)
 		for _, player in ipairs(minetest.get_connected_players()) do
 			local pname = player:get_player_name()
+			local filename = modname .. "_capture_" .. pname .. "_" .. tostring(minetest.get_us_time()) .. ".png"
 			minetest.dynamic_add_media({
-				filename = screen_texname,
+				filename = filename,
 				filedata = png,
 				to_player = pname,
 				ephemeral = true,
 				client_cache = false,
 			}, function()
-				msg(pname, "capture received -> node texture updated: " .. screen_texname)
+				local hudid = hud_by_player[pname]
+				if hudid then
+					player:hud_change(hudid, "text", filename)
+				else
+					hud_by_player[pname] = player:hud_add({
+						hud_elem_type = "image",
+						text = filename,
+						position = {x=0.02, y=0.20},
+						offset = {x=0, y=0},
+						scale = {x=2, y=2},
+						alignment = {x=1, y=1},
+					})
+				end
+				msg(pname, "capture received -> hud image updated")
 			end)
 		end
 	end)

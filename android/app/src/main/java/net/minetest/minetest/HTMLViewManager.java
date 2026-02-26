@@ -290,35 +290,26 @@ public class HTMLViewManager {
 			int w = Math.max(0, width);
 			int h = Math.max(0, height);
 
-			// Texture binding is intended for offscreen rendering.
-			// Force-hide the view unless the modder explicitly calls htmlview_display again.
-			try {
-				st0.container.setVisibility(View.INVISIBLE);
-				int offW = w > 0 ? w : 256;
-				int offH = h > 0 ? h : 256;
-				FrameLayout.LayoutParams lp;
-				if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
-					lp = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
-				} else {
-					lp = new FrameLayout.LayoutParams(1, 1);
-				}
-				lp.gravity = Gravity.TOP | Gravity.START;
-				lp.width = Math.max(1, offW);
-				lp.height = Math.max(1, offH);
-				lp.leftMargin = 0;
-				lp.topMargin = 0;
-				lp.rightMargin = 0;
-				lp.bottomMargin = 0;
-				st0.container.setLayoutParams(lp);
-				setDragEnabled(st0, false);
-			} catch (Exception ignored) {
-			}
+			int offW = w > 0 ? w : 256;
+			int offH = h > 0 ? h : 256;
 
 			TextureLoop existing = textureLoops.get(id);
 			if (existing != null) {
 				existing.width = w;
 				existing.height = h;
 				existing.intervalMs = intervalMs;
+				if (existing.offscreenApplied) {
+					try {
+						HtmlViewState st = views.get(id);
+						if (st != null && st.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+							FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) st.container.getLayoutParams();
+							lp.width = Math.max(1, offW);
+							lp.height = Math.max(1, offH);
+							st.container.setLayoutParams(lp);
+						}
+					} catch (Exception ignored) {
+					}
+				}
 				handler.removeCallbacks(existing.runnable);
 				handler.post(existing.runnable);
 				return;
@@ -328,6 +319,56 @@ public class HTMLViewManager {
 			loop.width = w;
 			loop.height = h;
 			loop.intervalMs = intervalMs;
+
+			try {
+				int vis = st0.container.getVisibility();
+				if (vis != View.VISIBLE) {
+					loop.offscreenApplied = true;
+					loop.prevVisibility = vis;
+					loop.prevAlpha = st0.container.getAlpha();
+					loop.prevLayerType = st0.webView.getLayerType();
+					if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+						FrameLayout.LayoutParams prev = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
+						loop.prevWidth = prev.width;
+						loop.prevHeight = prev.height;
+						loop.prevLeftMargin = prev.leftMargin;
+						loop.prevTopMargin = prev.topMargin;
+						loop.prevRightMargin = prev.rightMargin;
+						loop.prevBottomMargin = prev.bottomMargin;
+						loop.prevGravity = prev.gravity;
+					}
+
+					st0.container.setVisibility(View.VISIBLE);
+					st0.container.setAlpha(0.0f);
+					st0.container.setEnabled(false);
+					st0.container.setClickable(false);
+					st0.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
+					FrameLayout.LayoutParams lp;
+					if (st0.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+						lp = (FrameLayout.LayoutParams) st0.container.getLayoutParams();
+					} else {
+						lp = new FrameLayout.LayoutParams(1, 1);
+					}
+					lp.gravity = Gravity.TOP | Gravity.START;
+					lp.width = Math.max(1, offW);
+					lp.height = Math.max(1, offH);
+					lp.leftMargin = -10000;
+					lp.topMargin = -10000;
+					lp.rightMargin = 0;
+					lp.bottomMargin = 0;
+					st0.container.setLayoutParams(lp);
+					setDragEnabled(st0, false);
+				}
+			} catch (Exception ignored) {
+			}
+
+			try {
+				int[] ph = new int[] { 0xFF101014, 0xFF101014, 0xFF101014, 0xFF101014 };
+				nativeOnHTMLTextureFrame(id, 2, 2, ph);
+			} catch (Exception ignored) {
+			}
+
 			loop.runnable = new Runnable() {
 				@Override
 				public void run() {
@@ -363,6 +404,31 @@ public class HTMLViewManager {
 				}
 				loop.canvas = null;
 				loop.pixels = null;
+
+				if (loop.offscreenApplied) {
+					try {
+						HtmlViewState st = views.get(id);
+						if (st != null) {
+							st.webView.setLayerType(loop.prevLayerType, null);
+							if (st.container.getLayoutParams() instanceof FrameLayout.LayoutParams) {
+								FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) st.container.getLayoutParams();
+								lp.width = loop.prevWidth;
+								lp.height = loop.prevHeight;
+								lp.leftMargin = loop.prevLeftMargin;
+								lp.topMargin = loop.prevTopMargin;
+								lp.rightMargin = loop.prevRightMargin;
+								lp.bottomMargin = loop.prevBottomMargin;
+								lp.gravity = loop.prevGravity;
+								st.container.setLayoutParams(lp);
+							}
+							st.container.setAlpha(loop.prevAlpha);
+							st.container.setEnabled(true);
+							st.container.setClickable(true);
+							st.container.setVisibility(loop.prevVisibility);
+						}
+					} catch (Exception ignored) {
+					}
+				}
 			}
 		});
 	}
@@ -857,6 +923,18 @@ public class HTMLViewManager {
 		Bitmap bmp;
 		Canvas canvas;
 		int[] pixels;
+
+		boolean offscreenApplied;
+		int prevVisibility;
+		float prevAlpha;
+		int prevLayerType;
+		int prevWidth;
+		int prevHeight;
+		int prevLeftMargin;
+		int prevTopMargin;
+		int prevRightMargin;
+		int prevBottomMargin;
+		int prevGravity;
 	}
 
 	private static class HtmlViewState {
