@@ -447,6 +447,7 @@ void htmlview_jni_poll_textures(IWritableTextureSource *tsrc)
 		std::memcpy(img->getData(), fr.argb.data(), fr.argb.size() * sizeof(std::uint32_t));
 
 		tsrc->insertSourceImage(texture_name, img);
+		img->drop();
 	}
 #else
 	(void)tsrc;
