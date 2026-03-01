@@ -1249,6 +1249,7 @@ void ServerEnvironment::getAddedActiveObjects(PlayerSAO *playersao, s16 radius,
 
 	m_ao_manager.getAddedActiveObjectsAroundPos(
 		playersao->getBasePosition(), playersao->getPlayer()->getName(),
+		playersao->getLayer(),
 		radius_f, player_radius_f,
 		current_objects, added_objects);
 }
@@ -1294,6 +1295,11 @@ void ServerEnvironment::getRemovedActiveObjects(PlayerSAO *playersao, s16 radius
 
 		if (object->isGone()) {
 			removed_objects.emplace_back(true, id);
+			continue;
+		}
+
+		if (object->getLayer() != "*" && object->getLayer() != playersao->getLayer()) {
+			removed_objects.emplace_back(false, id); // different layer
 			continue;
 		}
 

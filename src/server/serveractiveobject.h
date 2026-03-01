@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <optional>
 #include <queue>
+#include <string>
 #include "irrlichttypes_bloated.h"
 #include "activeobject.h"
 #include "itemgroup.h"
@@ -65,6 +66,9 @@ public:
 	v3f getBasePosition() const { return m_base_position; }
 	void setBasePosition(v3f pos);
 	ServerEnvironment* getEnv(){ return m_env; }
+
+	virtual void setLayer(const std::string &layer) { m_layer = layer; }
+	virtual const std::string &getLayer() const { return m_layer; }
 
 	/*
 		Some more dynamic interface
@@ -212,6 +216,8 @@ public:
 		object.
 	*/
 	u16 m_known_by_count = 0;
+
+	std::string m_layer = "main";
 
 	/*
 		A getter that unifies the above to answer the question:

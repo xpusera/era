@@ -172,6 +172,12 @@ private:
 	// get_effective_observers(self)
 	static int l_get_effective_observers(lua_State *L);
 
+	// set_layer(self, layer)
+	static int l_set_layer(lua_State *L);
+
+	// get_layer(self)
+	static int l_get_layer(lua_State *L);
+
 	// is_player(self)
 	static int l_is_player(lua_State *L);
 

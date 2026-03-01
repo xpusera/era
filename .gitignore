@@ -72,6 +72,10 @@ AppDir
 !/mods/htmlview_test/**
 !/mods/htmlview_demo/
 !/mods/htmlview_demo/**
+!/mods/pocket/
+!/mods/pocket/**
+!/mods/pocket_test/
+!/mods/pocket_test/**
 /worlds/*
 !/worlds/worlds_here.txt
 /clientmods/*

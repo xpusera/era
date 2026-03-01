@@ -159,3 +159,41 @@ Additive layers can be built on top of base animations using relative bone overr
 - If you need facial expressions/emotes today, emulate morphs via:
   - mesh swapping (`ObjectRef:set_properties({mesh=...})`)
   - bone scaling/rotation overrides on dedicated facial bones
+
+## Pocket dimensions (engine + Lua)
+
+This fork adds a minimal engine layer system to support parallel "pocket" dimensions on the same coordinates.
+
+### Entity visibility layers (Lua)
+
+`ObjectRef:set_layer(layer)` / `ObjectRef:get_layer()`
+
+- Default layer for all objects is `"main"`.
+- Objects are only sent to clients whose player layer matches the object's layer.
+- Special value: `"*"` makes an object visible to all layers.
+
+### Per-layer node overrides (Lua)
+
+`minetest.layer_set_node(pos, node, layer) -> boolean`
+
+- Sets a per-layer node override that only affects mapblocks sent to players in `layer`.
+- Does not modify the real map node.
+
+`minetest.layer_get_node(pos, layer) -> node_or_nil`
+
+- Returns the override node table, or `nil` if there is no override.
+
+`minetest.layer_remove_node(pos, layer) -> boolean`
+
+- Removes an override.
+
+### Pocket mod
+
+This fork ships a mod at `mods/pocket` that implements a Lua-driven pocket dimension API:
+
+- `pocket.register(name, def)`
+- `pocket.enter(player, name)` / `pocket.leave(player)`
+- `pocket.set_node/get_node/remove_node(pos, layer)` wrappers
+- Auto-loads `dimensions/<name>/init.lua` from every enabled mod
+
+A small test mod is included at `mods/pocket_test`.

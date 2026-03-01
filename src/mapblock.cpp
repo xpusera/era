@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <sstream>
+#include <unordered_map>
 #include "map.h"
 #include "nodedef.h"
 #include "nodemetadata.h"
@@ -92,7 +93,17 @@ static const char *modified_reason_strings[] = {
 	"finishBlockMake: expireIsAir",
 	"MMVManip::blitBackAll",
 	"unknown",
+	"layerNodeOverride",
 };
+
+struct MapBlock::LayerNodeOverrides
+{
+	using NodeMap = std::unordered_map<u16, MapNode>;
+	std::unordered_map<std::string, NodeMap> layers;
+};
+
+static constexpr u32 MAPBLOCK_LAYER_NODES_MAGIC = 0x504F434B; // "POCK"
+static constexpr u8 MAPBLOCK_LAYER_NODES_VERSION = 1;
 
 /*
 	MapBlock
@@ -385,6 +396,142 @@ void MapBlock::correctBlockNodeIds(const NameIdMapping *nimap, MapNode *nodes,
 	}
 }
 
+bool MapBlock::hasLayerNodeOverrides(const std::string &layer) const
+{
+	if (!m_layer_node_overrides)
+		return false;
+	auto it = m_layer_node_overrides->layers.find(layer);
+	return it != m_layer_node_overrides->layers.end() && !it->second.empty();
+}
+
+bool MapBlock::hasAnyLayerNodeOverrides() const
+{
+	return m_layer_node_overrides && !m_layer_node_overrides->layers.empty();
+}
+
+bool MapBlock::getLayerNode(v3s16 relpos, const std::string &layer, MapNode *out_node) const
+{
+	if (!isValidPosition(relpos) || !m_layer_node_overrides)
+		return false;
+
+	auto itlayer = m_layer_node_overrides->layers.find(layer);
+	if (itlayer == m_layer_node_overrides->layers.end())
+		return false;
+
+	u16 idx = relpos.Z * zstride + relpos.Y * ystride + relpos.X;
+	auto it = itlayer->second.find(idx);
+	if (it == itlayer->second.end())
+		return false;
+
+	if (out_node)
+		*out_node = it->second;
+	return true;
+}
+
+bool MapBlock::setLayerNode(v3s16 relpos, const std::string &layer, const MapNode &node)
+{
+	if (!isValidPosition(relpos) || layer.empty())
+		return false;
+
+	if (!m_layer_node_overrides)
+		m_layer_node_overrides = std::make_unique<LayerNodeOverrides>();
+
+	u16 idx = relpos.Z * zstride + relpos.Y * ystride + relpos.X;
+	m_layer_node_overrides->layers[layer][idx] = node;
+	raiseModified(MOD_STATE_WRITE_NEEDED, MOD_REASON_LAYER_NODE_OVERRIDE);
+	return true;
+}
+
+bool MapBlock::removeLayerNode(v3s16 relpos, const std::string &layer)
+{
+	if (!isValidPosition(relpos) || !m_layer_node_overrides)
+		return false;
+
+	auto itlayer = m_layer_node_overrides->layers.find(layer);
+	if (itlayer == m_layer_node_overrides->layers.end())
+		return false;
+
+	u16 idx = relpos.Z * zstride + relpos.Y * ystride + relpos.X;
+	if (itlayer->second.erase(idx) == 0)
+		return false;
+
+	if (itlayer->second.empty())
+		m_layer_node_overrides->layers.erase(itlayer);
+	if (m_layer_node_overrides->layers.empty())
+		m_layer_node_overrides.reset();
+
+	raiseModified(MOD_STATE_WRITE_NEEDED, MOD_REASON_LAYER_NODE_OVERRIDE);
+	return true;
+}
+
+bool MapBlock::applyLayerNodeOverrides(const std::string &layer, MapNode *nodes) const
+{
+	if (!m_layer_node_overrides)
+		return false;
+	auto itlayer = m_layer_node_overrides->layers.find(layer);
+	if (itlayer == m_layer_node_overrides->layers.end() || itlayer->second.empty())
+		return false;
+
+	for (const auto &it : itlayer->second) {
+		if (it.first < nodecount)
+			nodes[it.first] = it.second;
+	}
+	return true;
+}
+
+void MapBlock::serializeNetworkWithNodes(std::ostream &os_compressed, u8 version,
+		const MapNode *nodes, int compression_level)
+{
+	if (!ser_ver_supported_write(version))
+		throw VersionMismatchException("ERROR: MapBlock format not supported");
+
+	std::ostringstream os_raw(std::ios_base::binary);
+	std::ostream &os = version >= 29 ? os_raw : os_compressed;
+
+	u8 flags = 0;
+	if (is_underground)
+		flags |= 0x01;
+
+	bool only_air = true;
+	for (u32 i = 0; i < nodecount; i++) {
+		if (nodes[i].getContent() != CONTENT_AIR) {
+			only_air = false;
+			break;
+		}
+	}
+	if (!only_air)
+		flags |= 0x02;
+	if (!m_generated)
+		flags |= 0x08;
+	writeU8(os, flags);
+	if (version >= 27)
+		writeU16(os, m_lighting_complete);
+
+	const u8 content_width = 2;
+	const u8 params_width = 2;
+	Buffer<u8> buf = MapNode::serializeBulk(version, nodes, nodecount,
+			content_width, params_width, false);
+
+	writeU8(os, content_width);
+	writeU8(os, params_width);
+	if (version >= 29) {
+		os.write(reinterpret_cast<char*>(*buf), buf.getSize());
+	} else {
+		compress(buf, os, version, compression_level);
+	}
+
+	if (version >= 29) {
+		m_node_metadata.serialize(os, version, false);
+	} else {
+		m_node_metadata.serialize(os_raw, version, false);
+		compress(os_raw.str(), os, version, compression_level);
+	}
+
+	if (version >= 29) {
+		compress(os_raw.str(), os_compressed, version, compression_level);
+	}
+}
+
 void MapBlock::serialize(std::ostream &os_compressed, u8 version, bool disk, int compression_level)
 {
 	if (!ser_ver_supported_write(version))
@@ -485,6 +632,44 @@ void MapBlock::serialize(std::ostream &os_compressed, u8 version, bool disk, int
 		if (version >= 25) {
 			// Node timers
 			m_node_timers.serialize(os, version);
+		}
+
+		if (m_layer_node_overrides && !m_layer_node_overrides->layers.empty()) {
+			writeU32(os, MAPBLOCK_LAYER_NODES_MAGIC);
+			writeU8(os, MAPBLOCK_LAYER_NODES_VERSION);
+			writeU16(os, static_cast<u16>(m_layer_node_overrides->layers.size()));
+
+			const NodeDefManager *nodedef = m_gamedef->ndef();
+			for (const auto &layer_it : m_layer_node_overrides->layers) {
+				const std::string &layer = layer_it.first;
+				const auto &layer_nodes = layer_it.second;
+
+				os << serializeString16(layer);
+
+				NameIdMapping layer_nimap;
+				std::unordered_map<content_t, content_t> global_to_local;
+				global_to_local.reserve(layer_nodes.size());
+				content_t next_id = 0;
+
+				for (const auto &entry : layer_nodes) {
+					content_t global_id = entry.second.getContent();
+					if (global_to_local.find(global_id) != global_to_local.end())
+						continue;
+					content_t local_id = next_id++;
+					global_to_local.emplace(global_id, local_id);
+					layer_nimap.set(local_id, nodedef->get(global_id).name);
+				}
+
+				layer_nimap.serialize(os);
+
+				writeU16(os, static_cast<u16>(layer_nodes.size()));
+				for (const auto &entry : layer_nodes) {
+					writeU16(os, entry.first);
+					writeU16(os, global_to_local.at(entry.second.getContent()));
+					writeU8(os, entry.second.param1);
+					writeU8(os, entry.second.param2);
+				}
+			}
 		}
 	}
 
@@ -642,6 +827,71 @@ void MapBlock::deSerialize(std::istream &in_compressed, u8 version, bool disk)
 			u16 dummy;
 			m_is_air = nimap.getId("air", dummy);
 			m_is_air_expired = false;
+		}
+
+		std::streampos layer_ext_pos = is.tellg();
+		if (layer_ext_pos != std::streampos(-1) && is.peek() != EOF) {
+			u32 magic = readU32(is);
+			if (magic == MAPBLOCK_LAYER_NODES_MAGIC) {
+				try {
+					u8 ext_ver = readU8(is);
+					if (ext_ver != MAPBLOCK_LAYER_NODES_VERSION)
+						throw SerializationError("MapBlock::deSerialize(): unknown layer node overrides version");
+
+					u16 layer_count = readU16(is);
+					if (layer_count == 0)
+						throw SerializationError("MapBlock::deSerialize(): invalid layer_count");
+
+					m_layer_node_overrides = std::make_unique<LayerNodeOverrides>();
+					const NodeDefManager *nodedef = m_gamedef->ndef();
+
+					for (u16 li = 0; li < layer_count; li++) {
+						std::string layer = deSerializeString16(is);
+						NameIdMapping layer_nimap;
+						layer_nimap.deSerialize(is);
+
+						u16 entry_count = readU16(is);
+						auto &layer_nodes = m_layer_node_overrides->layers[layer];
+						layer_nodes.reserve(entry_count);
+
+						for (u16 ei = 0; ei < entry_count; ei++) {
+							u16 idx = readU16(is);
+							content_t local_id = readU16(is);
+							u8 param1 = readU8(is);
+							u8 param2 = readU8(is);
+
+							if (idx >= nodecount)
+								continue;
+
+							std::string name;
+							if (!layer_nimap.getName(local_id, name))
+								throw SerializationError("MapBlock::deSerialize(): layer node overrides contain id with no name mapping");
+
+							content_t global_id;
+							if (!nodedef->getId(name, global_id)) {
+								global_id = m_gamedef->allocateUnknownNodeId(name);
+								if (global_id == CONTENT_IGNORE)
+									throw SerializationError("MapBlock::deSerialize(): could not allocate global id for layer node override");
+							}
+
+							MapNode n;
+							n.setContent(global_id);
+							n.param1 = param1;
+							n.param2 = param2;
+							layer_nodes[idx] = n;
+						}
+					}
+
+					if (m_layer_node_overrides->layers.empty())
+						m_layer_node_overrides.reset();
+				} catch (SerializationError &e) {
+					warningstream << "MapBlock::deSerialize(): Ignoring an error while deserializing layer node overrides at (" << getPos() << "): " << e.what() << std::endl;
+					m_layer_node_overrides.reset();
+				}
+			} else {
+				is.clear();
+				is.seekg(layer_ext_pos);
+			}
 		}
 	}
 

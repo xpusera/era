@@ -1059,6 +1059,47 @@ int ObjectRef::l_get_effective_observers(lua_State *L)
 	});
 }
 
+// set_layer(self, layer)
+int ObjectRef::l_set_layer(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (sao == nullptr)
+		return 0;
+
+	std::string layer = readParam<std::string>(L, 2);
+	if (layer.empty())
+		return luaL_error(L, "layer must be a non-empty string");
+
+	sao->setLayer(layer);
+
+	if (PlayerSAO *playersao = getplayersao(ref)) {
+		Server *server = getServer(L);
+		if (server) {
+			const session_t peer_id = playersao->getPeerID();
+			ClientInterface::AutoLock clientlock(server->m_clients);
+			if (RemoteClient *client = server->m_clients.lockedGetClientNoEx(peer_id, CS_Active))
+				client->ResetBlockSendCache();
+		}
+	}
+
+	return 0;
+}
+
+// get_layer(self)
+int ObjectRef::l_get_layer(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (sao == nullptr)
+		return 0;
+
+	lua_pushstring(L, sao->getLayer().c_str());
+	return 1;
+}
+
 // is_player(self)
 int ObjectRef::l_is_player(lua_State *L)
 {
@@ -2984,6 +3025,8 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, set_observers),
 	luamethod(ObjectRef, get_observers),
 	luamethod(ObjectRef, get_effective_observers),
+	luamethod(ObjectRef, set_layer),
+	luamethod(ObjectRef, get_layer),
 
 	luamethod_aliased(ObjectRef, set_velocity, setvelocity),
 	luamethod_aliased(ObjectRef, add_velocity, add_player_velocity),

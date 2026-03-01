@@ -6526,6 +6526,17 @@ Environment access
 * `core.get_node_or_nil(pos)`
     * Same as `get_node` but returns `nil` for unloaded areas.
     * Note that even loaded areas can contain "ignore" nodes.
+* `core.layer_set_node(pos, node, layer)`
+    * Sets a layer-only node override at `pos` for `layer`.
+    * Does **not** modify the real map node.
+    * Affects only the map data sent to clients whose player layer matches `layer`.
+    * Returns `true` on success, `false` if the mapblock isn't available.
+* `core.layer_get_node(pos, layer)`
+    * Returns the layer override node as a table in the same format as `core.set_node`,
+      or `nil` if there is no override at `pos` for `layer`.
+* `core.layer_remove_node(pos, layer)`
+    * Removes the layer override node.
+    * Returns `true` if an override existed and was removed, `false` otherwise.
 * `core.get_node_raw(x, y, z)`
     * Same as `get_node` but a faster low-level API
     * Returns `content_id`, `param1`, `param2`, and `pos_ok`
@@ -8619,6 +8630,13 @@ child will follow movement and rotation of that bone.
     * Time complexity: O(nm)
         * n: number of observers of the involved entities
         * m: number of ancestors along the attachment chain
+* `set_layer(layer)`
+    * Sets the object's network visibility layer.
+    * Objects are only sent to clients whose player layer matches the object's layer.
+    * Special value: `"*"` makes the object visible to all layers.
+    * Default layer for all objects is `"main"`.
+* `get_layer()`
+    * Returns the object's current layer (string).
 * `is_player()`: returns true for players, false otherwise
 * `get_nametag_attributes()`
     * returns a table with the attributes of the nametag of an object

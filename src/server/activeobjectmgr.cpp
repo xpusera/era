@@ -157,6 +157,7 @@ void ActiveObjectMgr::getObjectsInArea(const aabb3f &box,
 
 void ActiveObjectMgr::getAddedActiveObjectsAroundPos(
 		v3f player_pos, const std::string &player_name,
+		const std::string &player_layer,
 		f32 radius, f32 player_radius,
 		const std::set<u16> &current_objects,
 		std::vector<u16> &added_objects)
@@ -178,6 +179,9 @@ void ActiveObjectMgr::getAddedActiveObjectsAroundPos(
 			continue;
 
 		if (object->isGone())
+			continue;
+
+		if (object->getLayer() != "*" && object->getLayer() != player_layer)
 			continue;
 
 		f32 distance_f = object->getBasePosition().getDistanceFrom(player_pos);

@@ -252,6 +252,7 @@ public:
 
 	void SetBlockNotSent(v3s16 p);
 	void SetBlocksNotSent(const std::vector<v3s16> &blocks);
+	void ResetBlockSendCache();
 
 	/**
 	 * tell client about this block being modified right now.

@@ -5,6 +5,8 @@
 #pragma once
 
 #include <vector>
+#include <memory>
+#include <string>
 #include "irr_v3d.h"
 #include "mapnode.h"
 #include "exceptions.h"
@@ -48,6 +50,7 @@ enum ModReason : u32 {
 	MOD_REASON_EXPIRE_IS_AIR              = 1 << 16,
 	MOD_REASON_VMANIP                     = 1 << 17,
 	MOD_REASON_UNKNOWN                    = 1 << 18,
+	MOD_REASON_LAYER_NODE_OVERRIDE        = 1 << 19,
 };
 
 ////
@@ -408,12 +411,21 @@ public:
 	// Set disk to true for on-disk format, false for over-the-network format
 	// Precondition: version >= SER_FMT_VER_LOWEST_WRITE
 	void serialize(std::ostream &result, u8 version, bool disk, int compression_level);
+	void serializeNetworkWithNodes(std::ostream &result, u8 version,
+			const MapNode *nodes, int compression_level);
 	// If disk == true: In addition to doing other things, will add
 	// unknown blocks from id-name mapping to wndef
 	void deSerialize(std::istream &is, u8 version, bool disk);
 
 	void serializeNetworkSpecific(std::ostream &os);
 	void deSerializeNetworkSpecific(std::istream &is);
+
+	bool hasLayerNodeOverrides(const std::string &layer) const;
+	bool hasAnyLayerNodeOverrides() const;
+	bool getLayerNode(v3s16 relpos, const std::string &layer, MapNode *out_node) const;
+	bool setLayerNode(v3s16 relpos, const std::string &layer, const MapNode &node);
+	bool removeLayerNode(v3s16 relpos, const std::string &layer);
+	bool applyLayerNodeOverrides(const std::string &layer, MapNode *nodes) const;
 
 	bool storeActiveObject(u16 id);
 	// clearObject and return removed objects count
@@ -446,6 +458,8 @@ private:
 		u32 count, const NodeDefManager *nodedef);
 	static void correctBlockNodeIds(const NameIdMapping *nimap, MapNode *nodes,
 			IGameDef *gamedef);
+
+	struct LayerNodeOverrides;
 
 	/*
 	 * PLEASE NOTE: When adding something here be mindful of position and size
@@ -485,6 +499,7 @@ private:
 	 * CPU caches and/or optimizability of algorithms working on this array.
 	 */
 	MapNode *data = nullptr;
+	std::unique_ptr<LayerNodeOverrides> m_layer_node_overrides;
 
 	// provides the item and node definitions
 	IGameDef *m_gamedef;

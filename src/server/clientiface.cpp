@@ -457,6 +457,16 @@ void RemoteClient::SetBlocksNotSent(const std::vector<v3s16> &blocks)
 	}
 }
 
+void RemoteClient::ResetBlockSendCache()
+{
+	m_nothing_to_send_pause_timer = 0;
+	m_map_send_completion_timer = 0;
+	m_blocks_sent.clear();
+	m_blocks_sending.clear();
+	m_blocks_occ.clear();
+	m_nearest_unsent_d = 0;
+}
+
 void RemoteClient::notifyEvent(ClientStateEvent event)
 {
 	std::ostringstream myerror;

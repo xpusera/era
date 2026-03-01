@@ -2441,6 +2441,14 @@ void Server::sendNodeChangePkt(NetworkPacket &pkt, v3s16 block_pos,
 		RemotePlayer *player = m_env->getPlayer(client_id);
 		PlayerSAO *sao = player ? player->getPlayerSAO() : nullptr;
 
+		if (sao && sao->getLayer() != "main") {
+			if (far_players)
+				far_players->emplace(client_id);
+			else
+				client->SetBlockNotSent(block_pos);
+			continue;
+		}
+
 		// If player is far away, only set modified blocks not sent
 		if (!client->isBlockSent(block_pos) || (sao &&
 				sao->getBasePosition().getDistanceFrom(p) > maxd)) {
@@ -2468,10 +2476,10 @@ void Server::sendMetadataChanged(const std::unordered_set<v3s16> &positions, flo
 		if (!client)
 			continue;
 
-		ServerActiveObject *player = getPlayerSAO(i);
+		PlayerSAO *playersao = getPlayerSAO(i);
 		v3s16 player_pos;
-		if (player)
-			player_pos = floatToInt(player->getBasePosition(), BS);
+		if (playersao)
+			player_pos = floatToInt(playersao->getBasePosition(), BS);
 
 		for (const v3s16 pos : positions) {
 			NodeMetadata *meta = m_env->getMap().getNodeMetadata(pos);
@@ -2480,6 +2488,10 @@ void Server::sendMetadataChanged(const std::unordered_set<v3s16> &positions, flo
 				continue;
 
 			v3s16 block_pos = getNodeBlockPos(pos);
+			if (playersao && playersao->getLayer() != "main") {
+				client->SetBlockNotSent(block_pos);
+				continue;
+			}
 			if (!client->isBlockSent(block_pos) ||
 					player_pos.getDistanceFrom(pos) > far_d_nodes) {
 				client->SetBlockNotSent(block_pos);
@@ -2513,7 +2525,11 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
 	thread_local const int net_compression_level = rangelim(g_settings->getS16("map_compression_level_net"), -1, 9);
 	std::string s, *sptr = nullptr;
 
-	if (cache) {
+	PlayerSAO *playersao = getPlayerSAO(peer_id);
+	std::string player_layer = playersao ? playersao->getLayer() : "main";
+	bool use_layer_overrides = block->hasLayerNodeOverrides(player_layer);
+
+	if (cache && !use_layer_overrides) {
 		auto it = cache->find({block->getPos(), ver});
 		if (it != cache->end())
 			sptr = &it->second;
@@ -2522,7 +2538,22 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
 	// Serialize the block in the right format
 	if (!sptr) {
 		std::ostringstream os(std::ios_base::binary);
-		block->serialize(os, ver, false, net_compression_level);
+
+		if (use_layer_overrides) {
+			static constexpr u32 nodecount = MAP_BLOCKSIZE * MAP_BLOCKSIZE * MAP_BLOCKSIZE;
+			std::vector<MapNode> nodes(nodecount);
+			for (s16 z = 0; z < MAP_BLOCKSIZE; z++)
+			for (s16 y = 0; y < MAP_BLOCKSIZE; y++)
+			for (s16 x = 0; x < MAP_BLOCKSIZE; x++) {
+				u32 idx = z * MAP_BLOCKSIZE * MAP_BLOCKSIZE + y * MAP_BLOCKSIZE + x;
+				nodes[idx] = block->getNodeNoCheck(x, y, z);
+			}
+			block->applyLayerNodeOverrides(player_layer, nodes.data());
+			block->serializeNetworkWithNodes(os, ver, nodes.data(), net_compression_level);
+		} else {
+			block->serialize(os, ver, false, net_compression_level);
+		}
+
 		block->serializeNetworkSpecific(os);
 		s = os.str();
 		sptr = &s;
@@ -2534,7 +2565,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
 	Send(&pkt);
 
 	// Store away in cache
-	if (cache && sptr == &s)
+	if (cache && sptr == &s && !use_layer_overrides)
 		(*cache)[{block->getPos(), ver}] = std::move(s);
 }
 

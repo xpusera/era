@@ -239,6 +239,120 @@ int ModApiEnv::l_swap_node(lua_State *L)
 	return 1;
 }
 
+// layer_set_node(pos, node, layer)
+int ModApiEnv::l_layer_set_node(lua_State *L)
+{
+	GET_ENV_PTR;
+
+	v3s16 pos = read_v3s16(L, 1);
+	MapNode n = readnode(L, 2);
+	std::string layer = readParam<std::string>(L, 3);
+	if (layer.empty())
+		return luaL_error(L, "layer must be a non-empty string");
+
+	v3s16 block_pos;
+	v3s16 rel_pos;
+	getNodeBlockPosWithOffset(pos, block_pos, rel_pos);
+
+	Map &map = env->getMap();
+	MapBlock *block = map.emergeBlock(block_pos, false);
+	if (!block) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	bool ok = block->setLayerNode(rel_pos, layer, n);
+	if (ok) {
+		Server *server = getServer(L);
+		if (server) {
+			ClientInterface::AutoLock clientlock(server->m_clients);
+			for (RemotePlayer *player : env->getPlayers()) {
+				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
+				if (!playersao || playersao->getLayer() != layer)
+					continue;
+				RemoteClient *client = server->m_clients.lockedGetClientNoEx(player->getPeerId(), CS_Active);
+				if (client)
+					client->SetBlockNotSent(block_pos);
+			}
+		}
+	}
+
+	lua_pushboolean(L, ok);
+	return 1;
+}
+
+// layer_get_node(pos, layer) -> node or nil
+int ModApiEnv::l_layer_get_node(lua_State *L)
+{
+	GET_ENV_PTR_NO_MAP_LOCK;
+
+	v3s16 pos = read_v3s16(L, 1);
+	std::string layer = readParam<std::string>(L, 2);
+	if (layer.empty())
+		return luaL_error(L, "layer must be a non-empty string");
+
+	v3s16 block_pos;
+	v3s16 rel_pos;
+	getNodeBlockPosWithOffset(pos, block_pos, rel_pos);
+
+	Map &map = env->getMap();
+	MapBlock *block = map.emergeBlock(block_pos, false);
+	if (!block) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	MapNode n;
+	if (!block->getLayerNode(rel_pos, layer, &n)) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	pushnode(L, n);
+	return 1;
+}
+
+// layer_remove_node(pos, layer)
+int ModApiEnv::l_layer_remove_node(lua_State *L)
+{
+	GET_ENV_PTR;
+
+	v3s16 pos = read_v3s16(L, 1);
+	std::string layer = readParam<std::string>(L, 2);
+	if (layer.empty())
+		return luaL_error(L, "layer must be a non-empty string");
+
+	v3s16 block_pos;
+	v3s16 rel_pos;
+	getNodeBlockPosWithOffset(pos, block_pos, rel_pos);
+
+	Map &map = env->getMap();
+	MapBlock *block = map.emergeBlock(block_pos, false);
+	if (!block) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+
+	bool ok = block->removeLayerNode(rel_pos, layer);
+	if (ok) {
+		Server *server = getServer(L);
+		if (server) {
+			ClientInterface::AutoLock clientlock(server->m_clients);
+			for (RemotePlayer *player : env->getPlayers()) {
+				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
+				if (!playersao || playersao->getLayer() != layer)
+					continue;
+				RemoteClient *client = server->m_clients.lockedGetClientNoEx(player->getPeerId(), CS_Active);
+				if (client)
+					client->SetBlockNotSent(block_pos);
+			}
+		}
+	}
+
+	lua_pushboolean(L, ok);
+	return 1;
+}
+
 // bulk_swap_node([pos1, pos2, ...], node)
 // pos = {x=num, y=num, z=num}
 int ModApiEnv::l_bulk_swap_node(lua_State *L)
@@ -1391,6 +1505,9 @@ void ModApiEnv::Initialize(lua_State *L, int top)
 	API_FCT(add_node);
 	API_FCT(swap_node);
 	API_FCT(bulk_swap_node);
+	API_FCT(layer_set_node);
+	API_FCT(layer_get_node);
+	API_FCT(layer_remove_node);
 	API_FCT(add_item);
 	API_FCT(remove_node);
 	API_FCT(get_node_raw);
