@@ -153,6 +153,17 @@ public:
 	{}
 	virtual void getAnimation(v2f *frames, float *frame_speed, float *frame_blend, bool *frame_loop)
 	{}
+
+	virtual void setAnimationClipByIndex(u16 clip_index, v2f frames, float frame_speed,
+			float frame_blend, bool frame_loop)
+	{}
+	virtual void setAnimationClipByName(const std::string &clip_name, v2f frames,
+			float frame_speed, float frame_blend, bool frame_loop)
+	{}
+	virtual void clearAnimationClip()
+	{}
+	virtual void getAnimationClip(u8 *clip_type, u16 *clip_index, std::string *clip_name) const
+	{}
 	virtual void setAnimationSpeed(float frame_speed)
 	{}
 	virtual void setBoneOverride(const std::string &bone, const BoneOverride &props)

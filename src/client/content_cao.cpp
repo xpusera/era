@@ -7,6 +7,7 @@
 #include <ICameraSceneNode.h>
 #include <IMeshManipulator.h>
 #include <AnimatedMeshSceneNode.h>
+#include <SkinnedMesh.h>
 #include <ISceneNode.h>
 #include "client/client.h"
 #include "client/renderingengine.h"
@@ -1375,11 +1376,25 @@ void GenericCAO::updateAnimation()
 	if (!m_animated_meshnode)
 		return;
 
-	// Note: This sets the current frame as well, (re)starting the animation.
-	m_animated_meshnode->setFrameLoop(m_animation_range.X, m_animation_range.Y);
+	v2f range = m_animation_range;
+	if (auto *skinned = dynamic_cast<scene::SkinnedMesh *>(m_animated_meshnode->getMesh())) {
+		const scene::SkinnedMesh::AnimationClip *clip = nullptr;
+		if (m_animation_clip_type == 2 && !m_animation_clip_name.empty())
+			clip = skinned->getAnimationClipByName(m_animation_clip_name);
+		else if (m_animation_clip_type == 1)
+			clip = skinned->getAnimationClip(m_animation_clip_index);
+		if (!clip)
+			clip = skinned->getAnimationClip(0);
+		if (clip) {
+			range.X += clip->start;
+			range.Y += clip->start;
+		}
+	}
+
+	m_animated_meshnode->setTransitionTime(m_animation_blend);
+	m_animated_meshnode->setFrameLoop(range.X, range.Y);
 	if (m_animated_meshnode->getAnimationSpeed() != m_animation_speed)
 		m_animated_meshnode->setAnimationSpeed(m_animation_speed);
-	m_animated_meshnode->setTransitionTime(m_animation_blend);
 	if (m_animated_meshnode->getLoopMode() != m_animation_loop)
 		m_animated_meshnode->setLoopMode(m_animation_loop);
 }
@@ -1608,35 +1623,44 @@ void GenericCAO::processMessage(const std::string &data)
 		}
 	} else if (cmd == AO_CMD_SET_ANIMATION) {
 		v2f range = readV2F32(is);
+		float speed = readF32(is);
+		float blend = readF32(is);
+		// these are sent inverted so we get true when the server sends nothing
+		bool loop = !readU8(is);
+
+		u8 clip_type = 0;
+		u16 clip_index = 0;
+		std::string clip_name;
+		if (canRead(is)) {
+			clip_type = readU8(is);
+			if (clip_type == 1)
+				clip_index = readU16(is);
+			else if (clip_type == 2)
+				clip_name = deSerializeString16(is);
+		}
+
+		m_animation_range = range;
+		m_animation_speed = speed;
+		m_animation_blend = blend;
+		m_animation_loop = loop;
+		m_animation_clip_type = clip_type;
+		m_animation_clip_index = clip_index;
+		m_animation_clip_name = std::move(clip_name);
+
 		if (!m_is_local_player) {
-			m_animation_range = range;
-			m_animation_speed = readF32(is);
-			m_animation_blend = readF32(is);
-			// these are sent inverted so we get true when the server sends nothing
-			m_animation_loop = !readU8(is);
 			updateAnimation();
 		} else {
 			LocalPlayer *player = m_env->getLocalPlayer();
-			if(player->last_animation == LocalPlayerAnimation::NO_ANIM)
-			{
-				m_animation_range = range;
-				m_animation_speed = readF32(is);
-				m_animation_blend = readF32(is);
-				// these are sent inverted so we get true when the server sends nothing
-				m_animation_loop = !readU8(is);
-			}
 			// update animation only if local animations present
 			// and received animation is unknown (except idle animation)
 			bool is_known = false;
-			for (int i = 1;i<4;i++)
-			{
-				if(m_animation_range.Y == player->local_animations[i].Y)
+			for (int i = 1; i < 4; i++) {
+				if (range.Y == player->local_animations[i].Y)
 					is_known = true;
 			}
-			if(!is_known ||
-					(player->local_animations[1].Y + player->local_animations[2].Y < 1))
-			{
-					updateAnimation();
+			if (!is_known ||
+					(player->local_animations[1].Y + player->local_animations[2].Y < 1)) {
+				updateAnimation();
 			}
 			// FIXME: ^ This code is trash. It's also broken.
 		}

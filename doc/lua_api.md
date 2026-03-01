@@ -306,7 +306,7 @@ depends on by supplying a file with an equal name.
 Only a subset of model file format features is supported:
 
 Simple textured meshes (with multiple textures), optionally with normals.
-The .x, .b3d and .gltf formats additionally support (a single) animation.
+The .x, .b3d and .gltf formats additionally support skeletal animation.
 
 #### glTF
 
@@ -324,8 +324,9 @@ to check whether a model is a valid glTF file.
 Many glTF features are not supported *yet*, including:
 
 * Animations
-  * Only a single animation is supported, use frame ranges within this animation.
-  * `CUBICSPLINE` interpolation is not supported.
+  * Multiple animation clips are supported: each glTF `animations[i]` becomes a selectable clip.
+  * Morph animations (`weights`) are not supported.
+  * `CUBICSPLINE` interpolation is not supported (only `STEP` and `LINEAR`).
 * Cameras
 * Materials
   * Only base color textures are supported
@@ -8521,8 +8522,14 @@ child will follow movement and rotation of that bone.
     * `frame_blend`: number, default: `0.0`
     * `frame_loop`: If `true`, animation will loop. If false, it will play once
        * default: `true`
-* `get_animation()`: returns current animation parameters set by `set_animation`:
-    * `frame_range`, `frame_speed`, `frame_blend`, `frame_loop`.
+* `set_animation_clip(clip, frame_range, frame_speed, frame_blend, frame_loop)`
+    * Like `set_animation`, but additionally selects an animation clip for multi-animation glTF/GLB meshes
+    * `clip`: number (0-based clip index) or string (clip name from glTF `animations[i].name`)
+    * For non-glTF meshes, `clip` is ignored and this behaves like `set_animation`
+    * `frame_range` is relative to the chosen clip (0 = clip start)
+* `get_animation()`: returns current animation parameters:
+    * `frame_range`, `frame_speed`, `frame_blend`, `frame_loop`, `clip`
+    * `clip` is `nil` (no clip selected), a number (clip index), or a string (clip name)
 * `set_animation_frame_speed(frame_speed)`
     * Sets the frame speed of the object's animation
     * Unlike `set_animation`, this will not restart the animation

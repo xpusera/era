@@ -421,6 +421,21 @@ void SelfType::MeshExtractor::addPrimitive(
 		indices = generateIndices(vertices->size());
 	}
 
+	if (skinIdx) {
+		const core::matrix4 mesh_node_global = parent->GlobalMatrix;
+		core::matrix4 normal_mat = mesh_node_global;
+		if (normal_mat.makeInverse())
+			normal_mat = normal_mat.getTransposed();
+		else
+			normal_mat = core::matrix4();
+
+		for (auto &v : *vertices) {
+			mesh_node_global.transformVect(v.Pos);
+			v.Normal = normal_mat.rotateAndScaleVect(v.Normal);
+			v.Normal.normalize();
+		}
+	}
+
 	auto *meshbuf = new SSkinMeshBuffer(std::move(*vertices), std::move(indices));
 	const auto meshbufNr = m_irr_model.addMeshBuffer(meshbuf);
 
@@ -622,72 +637,169 @@ void SelfType::MeshExtractor::loadSkins()
 	}
 }
 
-void SelfType::MeshExtractor::loadAnimation(const std::size_t animIdx)
+void SelfType::MeshExtractor::loadAnimations()
 {
-	const auto &anim = m_gltf_model.animations->at(animIdx);
-	for (const auto &channel : anim.channels) {
-		const auto &sampler = anim.samplers.at(channel.sampler);
+	if (!m_gltf_model.animations.has_value())
+		return;
 
-		bool interpolate = ([&]() {
-			switch (sampler.interpolation) {
-				case tiniergltf::AnimationSampler::Interpolation::STEP:
-					return false;
-				case tiniergltf::AnimationSampler::Interpolation::LINEAR:
-					return true;
-				default:
-					throw std::runtime_error("Only STEP and LINEAR keyframe interpolation are supported");
+	m_irr_model.clearAnimationClips();
+
+	const auto node_count = m_loaded_nodes.size();
+	std::vector<bool> pos_any(node_count, false);
+	std::vector<bool> rot_any(node_count, false);
+	std::vector<bool> scl_any(node_count, false);
+
+	for (const auto &anim : *m_gltf_model.animations) {
+		for (const auto &channel : anim.channels) {
+			if (!channel.target.node.has_value())
+				continue;
+			const auto node = *channel.target.node;
+			if (node >= node_count)
+				continue;
+			switch (channel.target.path) {
+			case tiniergltf::AnimationChannelTarget::Path::TRANSLATION:
+				pos_any[node] = true;
+				break;
+			case tiniergltf::AnimationChannelTarget::Path::ROTATION:
+				rot_any[node] = true;
+				break;
+			case tiniergltf::AnimationChannelTarget::Path::SCALE:
+				scl_any[node] = true;
+				break;
+			case tiniergltf::AnimationChannelTarget::Path::WEIGHTS:
+				throw std::runtime_error("no support for morph animations");
 			}
-		})();
-
-		const auto inputAccessor = Accessor<f32>::make(m_gltf_model, sampler.input);
-		const auto n_frames = inputAccessor.getCount();
-
-		if (!channel.target.node.has_value())
-			throw std::runtime_error("no animated node");
-
-		auto *joint = m_loaded_nodes.at(*channel.target.node);
-		if (std::holds_alternative<core::matrix4>(joint->transform)) {
-			warn("nodes using matrix transforms must not be animated");
-			continue;
 		}
+	}
 
-		switch (channel.target.path) {
-		case tiniergltf::AnimationChannelTarget::Path::TRANSLATION: {
-			const auto outputAccessor = Accessor<core::vector3df>::make(m_gltf_model, sampler.output);
-			auto &channel = joint->keys.position;
-			channel.interpolate = interpolate;
-			for (std::size_t i = 0; i < n_frames; ++i) {
-				f32 frame = inputAccessor.get(i);
-				core::vector3df position = outputAccessor.get(i);
-				channel.pushBack(frame, convertHandedness(position));
+	constexpr f32 clip_gap = 0.0001f;
+	f32 offset = 0.0f;
+
+	for (std::size_t animIdx = 0; animIdx < m_gltf_model.animations->size(); ++animIdx) {
+		const auto &anim = m_gltf_model.animations->at(animIdx);
+
+		std::vector<SkinnedMesh::Keys> clip_keys(node_count);
+		f32 min_time = std::numeric_limits<f32>::infinity();
+		f32 max_time = 0.0f;
+
+		for (const auto &channel : anim.channels) {
+			const auto &sampler = anim.samplers.at(channel.sampler);
+
+			bool interpolate = ([&]() {
+				switch (sampler.interpolation) {
+					case tiniergltf::AnimationSampler::Interpolation::STEP:
+						return false;
+					case tiniergltf::AnimationSampler::Interpolation::LINEAR:
+						return true;
+					default:
+						throw std::runtime_error("Only STEP and LINEAR keyframe interpolation are supported");
+				}
+			})();
+
+			if (!channel.target.node.has_value())
+				throw std::runtime_error("no animated node");
+			const auto nodeIdx = *channel.target.node;
+			if (nodeIdx >= node_count)
+				throw std::runtime_error("invalid animated node index");
+
+			const auto inputAccessor = Accessor<f32>::make(m_gltf_model, sampler.input);
+			const auto n_frames = inputAccessor.getCount();
+			if (n_frames == 0)
+				continue;
+
+			min_time = std::min(min_time, inputAccessor.get(0));
+			max_time = std::max(max_time, inputAccessor.get(n_frames - 1));
+
+			auto *joint = m_loaded_nodes.at(nodeIdx);
+			if (std::holds_alternative<core::matrix4>(joint->transform)) {
+				warn("nodes using matrix transforms must not be animated");
+				continue;
 			}
-			break;
-		}
-		case tiniergltf::AnimationChannelTarget::Path::ROTATION: {
-			const auto outputAccessor = Accessor<core::quaternion>::make(m_gltf_model, sampler.output);
-			auto &channel = joint->keys.rotation;
-			channel.interpolate = interpolate;
-			for (std::size_t i = 0; i < n_frames; ++i) {
-				f32 frame = inputAccessor.get(i);
-				core::quaternion rotation = outputAccessor.get(i);
-				channel.pushBack(frame, convertHandedness(rotation));
+
+			auto &keys = clip_keys.at(nodeIdx);
+			switch (channel.target.path) {
+			case tiniergltf::AnimationChannelTarget::Path::TRANSLATION: {
+				const auto outputAccessor = Accessor<core::vector3df>::make(m_gltf_model, sampler.output);
+				for (std::size_t i = 0; i < n_frames; ++i) {
+					f32 frame = inputAccessor.get(i);
+					core::vector3df position = outputAccessor.get(i);
+					keys.position.pushBack(frame, convertHandedness(position), interpolate);
+				}
+				break;
 			}
-			break;
-		}
-		case tiniergltf::AnimationChannelTarget::Path::SCALE: {
-			const auto outputAccessor = Accessor<core::vector3df>::make(m_gltf_model, sampler.output);
-			auto &channel = joint->keys.scale;
-			channel.interpolate = interpolate;
-			for (std::size_t i = 0; i < n_frames; ++i) {
-				f32 frame = inputAccessor.get(i);
-				core::vector3df scale = outputAccessor.get(i);
-				channel.pushBack(frame, scale);
+			case tiniergltf::AnimationChannelTarget::Path::ROTATION: {
+				const auto outputAccessor = Accessor<core::quaternion>::make(m_gltf_model, sampler.output);
+				for (std::size_t i = 0; i < n_frames; ++i) {
+					f32 frame = inputAccessor.get(i);
+					core::quaternion rotation = outputAccessor.get(i);
+					keys.rotation.pushBack(frame, convertHandedness(rotation), interpolate);
+				}
+				break;
 			}
-			break;
+			case tiniergltf::AnimationChannelTarget::Path::SCALE: {
+				const auto outputAccessor = Accessor<core::vector3df>::make(m_gltf_model, sampler.output);
+				for (std::size_t i = 0; i < n_frames; ++i) {
+					f32 frame = inputAccessor.get(i);
+					core::vector3df scale = outputAccessor.get(i);
+					keys.scale.pushBack(frame, scale, interpolate);
+				}
+				break;
+			}
+			case tiniergltf::AnimationChannelTarget::Path::WEIGHTS:
+				throw std::runtime_error("no support for morph animations");
+			}
 		}
-		case tiniergltf::AnimationChannelTarget::Path::WEIGHTS:
-			throw std::runtime_error("no support for morph animations");
+
+		if (min_time == std::numeric_limits<f32>::infinity()) {
+			min_time = 0.0f;
+			max_time = 0.0f;
 		}
+
+		const f32 duration = max_time - min_time;
+		const f32 time_shift = -min_time;
+
+		for (auto &keys : clip_keys) {
+			for (auto &f : keys.position.frames)
+				f.time += time_shift;
+			for (auto &f : keys.rotation.frames)
+				f.time += time_shift;
+			for (auto &f : keys.scale.frames)
+				f.time += time_shift;
+		}
+
+		for (std::size_t nodeIdx = 0; nodeIdx < node_count; ++nodeIdx) {
+			auto *joint = m_loaded_nodes.at(nodeIdx);
+			if (std::holds_alternative<core::matrix4>(joint->transform))
+				continue;
+
+			const auto rest = std::get<core::Transform>(joint->transform);
+			const auto &keys = clip_keys.at(nodeIdx);
+
+			if (!keys.position.frames.empty()) {
+				for (const auto &f : keys.position.frames)
+					joint->keys.position.pushBack(offset + f.time, f.value, f.interpolate_to_next);
+			} else if (pos_any[nodeIdx]) {
+				joint->keys.position.pushBack(offset, rest.translation);
+			}
+
+			if (!keys.rotation.frames.empty()) {
+				for (const auto &f : keys.rotation.frames)
+					joint->keys.rotation.pushBack(offset + f.time, f.value, f.interpolate_to_next);
+			} else if (rot_any[nodeIdx]) {
+				joint->keys.rotation.pushBack(offset, rest.rotation);
+			}
+
+			if (!keys.scale.frames.empty()) {
+				for (const auto &f : keys.scale.frames)
+					joint->keys.scale.pushBack(offset + f.time, f.value, f.interpolate_to_next);
+			} else if (scl_any[nodeIdx]) {
+				joint->keys.scale.pushBack(offset, rest.scale);
+			}
+		}
+
+		const auto clip_name = anim.name.has_value() ? *anim.name : ("animation_" + std::to_string(animIdx));
+		m_irr_model.addAnimationClip(clip_name, offset, offset + duration);
+		offset += duration + clip_gap;
 	}
 }
 
@@ -713,13 +825,7 @@ SkinnedMesh *SelfType::MeshExtractor::load()
 			load_mesh();
 		}
 		loadSkins();
-		// Load the first animation, if there is one.
-		if (m_gltf_model.animations.has_value()) {
-			if (m_gltf_model.animations->size() > 1)
-				warn("multiple animations are not supported");
-
-			loadAnimation(0);
-		}
+		loadAnimations();
 		return std::move(m_irr_model).finalize();
 	} catch (const std::out_of_range &e) {
 		throw std::runtime_error(e.what());

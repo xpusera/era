@@ -420,6 +420,42 @@ int ObjectRef::l_set_animation(lua_State *L)
 	return 0;
 }
 
+// set_animation_clip(self, clip, frame_range, frame_speed, frame_blend, frame_loop)
+int ObjectRef::l_set_animation_clip(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (sao == nullptr)
+		return 0;
+
+	u8 clip_type = 0;
+	u16 clip_index = 0;
+	std::string clip_name;
+	if (lua_isnumber(L, 2)) {
+		clip_type = 1;
+		lua_Number n = lua_tonumber(L, 2);
+		if (n < 0)
+			return luaL_error(L, "clip index must be >= 0");
+		clip_index = static_cast<u16>(n);
+	} else {
+		clip_type = 2;
+		clip_name = readParam<std::string>(L, 2);
+	}
+
+	v2f frame_range = readParam<v2f>(L, 3, v2f(1, 1));
+	float frame_speed = readParam<float>(L, 4, 15.0f);
+	float frame_blend = readParam<float>(L, 5, 0.0f);
+	bool frame_loop = readParam<bool>(L, 6, true);
+
+	if (clip_type == 1)
+		sao->setAnimationClipByIndex(clip_index, frame_range, frame_speed, frame_blend, frame_loop);
+	else
+		sao->setAnimationClipByName(clip_name, frame_range, frame_speed, frame_blend, frame_loop);
+
+	return 0;
+}
+
 // get_animation(self)
 int ObjectRef::l_get_animation(lua_State *L)
 {
@@ -439,7 +475,19 @@ int ObjectRef::l_get_animation(lua_State *L)
 	lua_pushnumber(L, frame_speed);
 	lua_pushnumber(L, frame_blend);
 	lua_pushboolean(L, frame_loop);
-	return 4;
+
+	u8 clip_type = 0;
+	u16 clip_index = 0;
+	std::string clip_name;
+	sao->getAnimationClip(&clip_type, &clip_index, &clip_name);
+	if (clip_type == 1)
+		lua_pushinteger(L, clip_index);
+	else if (clip_type == 2)
+		lua_pushlstring(L, clip_name.c_str(), clip_name.size());
+	else
+		lua_pushnil(L);
+
+	return 5;
 }
 
 // set_local_animation(self, idle, walk, dig, walk_while_dig, frame_speed)
@@ -2875,6 +2923,7 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, set_armor_groups),
 	luamethod(ObjectRef, get_armor_groups),
 	luamethod(ObjectRef, set_animation),
+	luamethod(ObjectRef, set_animation_clip),
 	luamethod(ObjectRef, get_animation),
 	luamethod(ObjectRef, set_animation_frame_speed),
 	luamethod(ObjectRef, set_bone_position),
