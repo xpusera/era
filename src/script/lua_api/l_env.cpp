@@ -265,12 +265,11 @@ int ModApiEnv::l_layer_set_node(lua_State *L)
 	if (ok) {
 		Server *server = getServer(L);
 		if (server) {
-			ClientInterface::AutoLock clientlock(server->m_clients);
 			for (RemotePlayer *player : env->getPlayers()) {
 				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
 				if (!playersao || playersao->getLayer() != layer)
 					continue;
-				RemoteClient *client = server->m_clients.lockedGetClientNoEx(player->getPeerId(), CS_Active);
+				RemoteClient *client = server->getClientNoEx(player->getPeerId(), CS_Active);
 				if (client)
 					client->SetBlockNotSent(block_pos);
 			}
@@ -337,12 +336,11 @@ int ModApiEnv::l_layer_remove_node(lua_State *L)
 	if (ok) {
 		Server *server = getServer(L);
 		if (server) {
-			ClientInterface::AutoLock clientlock(server->m_clients);
 			for (RemotePlayer *player : env->getPlayers()) {
 				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
 				if (!playersao || playersao->getLayer() != layer)
 					continue;
-				RemoteClient *client = server->m_clients.lockedGetClientNoEx(player->getPeerId(), CS_Active);
+				RemoteClient *client = server->getClientNoEx(player->getPeerId(), CS_Active);
 				if (client)
 					client->SetBlockNotSent(block_pos);
 			}
