@@ -210,14 +210,14 @@ public:
 	//// Regular MapNode get-setters
 	////
 
-	inline bool isValidPosition(s16 x, s16 y, s16 z)
+	inline bool isValidPosition(s16 x, s16 y, s16 z) const
 	{
 		return x >= 0 && x < MAP_BLOCKSIZE
 			&& y >= 0 && y < MAP_BLOCKSIZE
 			&& z >= 0 && z < MAP_BLOCKSIZE;
 	}
 
-	inline bool isValidPosition(v3s16 p)
+	inline bool isValidPosition(v3s16 p) const
 	{
 		return isValidPosition(p.X, p.Y, p.Z);
 	}
