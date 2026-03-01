@@ -437,6 +437,9 @@ public:
 	// Send block to specific player only
 	bool SendBlock(session_t peer_id, const v3s16 &blockpos);
 
+	void SetLayerBlockNotSent(const std::string &layer, v3s16 block_pos);
+	void ResetPeerBlockSendCache(session_t peer_id);
+
 	// Get or load translations for a language
 	Translations *getTranslationLanguage(const std::string &lang_code);
 

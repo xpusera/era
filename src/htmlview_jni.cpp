@@ -207,7 +207,7 @@ void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 	jboolean jsafe = safe_area;
 	jboolean jdrag = drag_embed;
 	jfloat jrad = border_radius;
-	
+
 	env->CallVoidMethod(activity, mid, jid, jx, jy, jw, jh, jvis, jfull, jsafe, jdrag, jrad);
 	if (jid)
 		env->DeleteLocalRef(jid);

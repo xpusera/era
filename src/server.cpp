@@ -2654,6 +2654,30 @@ bool Server::SendBlock(session_t peer_id, const v3s16 &blockpos)
 	return true;
 }
 
+void Server::SetLayerBlockNotSent(const std::string &layer, v3s16 block_pos)
+{
+	std::vector<session_t> clients = m_clients.getClientIDs();
+	ClientInterface::AutoLock clientlock(m_clients);
+	for (session_t client_id : clients) {
+		RemoteClient *client = m_clients.lockedGetClientNoEx(client_id, CS_Active);
+		if (!client)
+			continue;
+		RemotePlayer *player = m_env->getPlayer(client_id);
+		PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
+		if (!playersao || playersao->getLayer() != layer)
+			continue;
+		client->SetBlockNotSent(block_pos);
+	}
+}
+
+void Server::ResetPeerBlockSendCache(session_t peer_id)
+{
+	ClientInterface::AutoLock clientlock(m_clients);
+	RemoteClient *client = m_clients.lockedGetClientNoEx(peer_id, CS_Active);
+	if (client)
+		client->ResetBlockSendCache();
+}
+
 bool Server::addMediaFile(const std::string &filename,
 	const std::string &filepath, std::string *filedata_to,
 	std::string *digest_to)

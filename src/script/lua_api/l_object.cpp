@@ -1078,8 +1078,7 @@ int ObjectRef::l_set_layer(lua_State *L)
 		Server *server = getServer(L);
 		if (server) {
 			const session_t peer_id = playersao->getPeerID();
-			if (RemoteClient *client = server->getClientNoEx(peer_id, CS_Active))
-				client->ResetBlockSendCache();
+			server->ResetPeerBlockSendCache(peer_id);
 		}
 	}
 

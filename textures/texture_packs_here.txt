@@ -1,0 +1,3 @@
+Place texture packs in this directory.
+
+Each texture pack should be a folder or a .zip file containing textures and a texture_pack.conf.

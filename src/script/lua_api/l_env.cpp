@@ -264,16 +264,8 @@ int ModApiEnv::l_layer_set_node(lua_State *L)
 	bool ok = block->setLayerNode(rel_pos, layer, n);
 	if (ok) {
 		Server *server = getServer(L);
-		if (server) {
-			for (RemotePlayer *player : env->getPlayers()) {
-				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
-				if (!playersao || playersao->getLayer() != layer)
-					continue;
-				RemoteClient *client = server->getClientNoEx(player->getPeerId(), CS_Active);
-				if (client)
-					client->SetBlockNotSent(block_pos);
-			}
-		}
+		if (server)
+			server->SetLayerBlockNotSent(layer, block_pos);
 	}
 
 	lua_pushboolean(L, ok);
@@ -335,16 +327,8 @@ int ModApiEnv::l_layer_remove_node(lua_State *L)
 	bool ok = block->removeLayerNode(rel_pos, layer);
 	if (ok) {
 		Server *server = getServer(L);
-		if (server) {
-			for (RemotePlayer *player : env->getPlayers()) {
-				PlayerSAO *playersao = player ? player->getPlayerSAO() : nullptr;
-				if (!playersao || playersao->getLayer() != layer)
-					continue;
-				RemoteClient *client = server->getClientNoEx(player->getPeerId(), CS_Active);
-				if (client)
-					client->SetBlockNotSent(block_pos);
-			}
-		}
+		if (server)
+			server->SetLayerBlockNotSent(layer, block_pos);
 	}
 
 	lua_pushboolean(L, ok);
