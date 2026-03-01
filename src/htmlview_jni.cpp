@@ -126,7 +126,7 @@ void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 	jboolean jvis = visible;
 	jboolean jfull = fullscreen;
 	jboolean jsafe = safe_area;
-	
+
 	env->CallVoidMethod(activity, mid, jid, jx, jy, jw, jh, jvis, jfull, jsafe);
 	if (jid)
 		env->DeleteLocalRef(jid);

@@ -16,6 +16,7 @@
 #include <array>
 #include <sstream>
 #include <iomanip>
+#include <limits>
 #include <unordered_map>
 
 #ifndef _WIN32
@@ -143,25 +144,53 @@ std::string wide_to_utf8(std::wstring_view input)
 
 std::wstring utf8_to_wide(std::string_view input)
 {
-	size_t outbuf_size = input.size() + 1;
-	wchar_t *outbuf = new wchar_t[outbuf_size];
-	memset(outbuf, 0, outbuf_size * sizeof(wchar_t));
-	MultiByteToWideChar(CP_UTF8, 0, input.data(), input.size(),
-		outbuf, outbuf_size);
-	std::wstring out(outbuf);
-	delete[] outbuf;
+	if (input.empty())
+		return {};
+	if (input.size() > (size_t)std::numeric_limits<int>::max())
+		return L"<invalid UTF-8 string>";
+
+	const int in_len = (int)input.size();
+	const int out_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+			input.data(), in_len, nullptr, 0);
+	if (out_len <= 0)
+		return L"<invalid UTF-8 string>";
+
+	std::wstring out;
+	out.resize(out_len);
+	const int written = MultiByteToWideChar(CP_UTF8, 0,
+			input.data(), in_len, out.data(), out_len);
+	if (written != out_len) {
+		if (written > 0)
+			out.resize(written);
+		else
+			return L"<invalid UTF-8 string>";
+	}
 	return out;
 }
 
 std::string wide_to_utf8(std::wstring_view input)
 {
-	size_t outbuf_size = (input.size() + 1) * 6;
-	char *outbuf = new char[outbuf_size];
-	memset(outbuf, 0, outbuf_size);
-	WideCharToMultiByte(CP_UTF8, 0, input.data(), input.size(),
-		outbuf, outbuf_size, NULL, NULL);
-	std::string out(outbuf);
-	delete[] outbuf;
+	if (input.empty())
+		return {};
+	if (input.size() > (size_t)std::numeric_limits<int>::max())
+		return "<invalid wide string>";
+
+	const int in_len = (int)input.size();
+	const int out_len = WideCharToMultiByte(CP_UTF8, 0,
+			input.data(), in_len, nullptr, 0, nullptr, nullptr);
+	if (out_len <= 0)
+		return "<invalid wide string>";
+
+	std::string out;
+	out.resize(out_len);
+	const int written = WideCharToMultiByte(CP_UTF8, 0,
+			input.data(), in_len, out.data(), out_len, nullptr, nullptr);
+	if (written != out_len) {
+		if (written > 0)
+			out.resize(written);
+		else
+			return "<invalid wide string>";
+	}
 	return out;
 }
 

@@ -2,11 +2,11 @@ apply plugin: 'com.android.application'
 
 android {
 	ndkVersion "$ndk_version"
+	compileSdk 34
 	defaultConfig {
 		applicationId 'net.minetest.minetest'
 		minSdkVersion 21
-		compileSdk 34
-		targetSdkVersion 35
+		targetSdkVersion 34
 		versionName "${versionMajor}.${versionMinor}.${versionPatch}"
 		versionCode versionMajor * 1000000 + versionMinor * 10000 + versionPatch * 100 + versionBuild
 	}
