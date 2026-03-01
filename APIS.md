@@ -73,3 +73,89 @@ glTF/GLB meshes can contain multiple animations. This fork loads each glTF `anim
   - `nil` (no clip selected)
   - number (clip index)
   - string (clip name)
+
+### Crossfade blending behavior
+
+For skinned meshes (including glTF), `frame_blend` controls crossfade duration (seconds) when switching animations.
+
+- Previous clip continues advancing during the blend (it does not freeze on the switch frame).
+- Target clip starts at the requested `frame_range` start and advances during the blend.
+
+## Lua Animator layer (state machine + events + additive layers)
+
+This fork ships a built-in Lua module `core.animator` (loaded from `builtin/common/animator.lua`). It provides:
+
+- Animation state machines (idle/walk/run/jump/attack...)
+- Crossfade transitions (uses `frame_blend` when applying states)
+- Frame-based animation events (footsteps, hit frames, particle spawns, etc.)
+- Optional additive bone layers (implemented via bone overrides)
+
+### `core.animator.create(object, def)`
+
+Creates an animator instance (does not auto-run).
+
+- `object`: `ObjectRef`
+- `def`: table
+  - `states`: `{[name] = state_def, ...}`
+  - `transitions`: `{ transition_def, ... }`
+  - `initial`: state name
+  - `get_context(self, object, dtime) -> table`: optional
+  - `on_event(self, object, event)`: optional
+  - `on_step(self, object, dtime, ctx)`: optional
+
+`state_def`:
+- `clip`: `nil` (non-glTF / legacy) or clip selector (0-based index or clip name string)
+- `range`: `{x=..., y=...}` (relative to clip when using `clip`)
+- `speed`: number (frames/sec)
+- `loop`: boolean (default `true`)
+- `blend`: number (seconds, default `0`)
+- `events`: optional list `{ {name=string, frame=number, data=any, callback=function?}, ... }`
+
+`transition_def`:
+- `from`: state name or `"*"`
+- `to`: state name
+- `condition(ctx, self, object) -> boolean`
+- `blend`: optional override blend seconds
+- `priority`: optional number (higher wins)
+
+### `core.animator.register(animator)`
+
+Registers the animator to run automatically each globalstep (removed automatically when the object becomes invalid).
+
+## Player model upgrade helpers (Lua)
+
+### Equipment / mesh layering (bone attachments)
+
+Use the engine's attachment system to attach equipment entities to bones:
+
+- `child:set_attach(parent, bone, position, rotation, forced_visible)`
+
+This works for animated meshes; attached objects follow the chosen bone.
+
+### Bone-level control (Lua)
+
+This fork adds a convenience API for per-bone rotation overrides:
+
+`ObjectRef:set_bone_rotation(bone, x, y, z, opts?)`
+
+- `bone`: string
+- `x, y, z`: rotation in degrees
+- `opts`: optional table
+  - `absolute`: boolean (default `false`)
+  - `interpolation`: number seconds (default `0`)
+
+This is implemented using bone overrides (`set_bone_override`) and supports additive control when `absolute=false`.
+
+### Additive animation layers (Lua)
+
+Additive layers can be built on top of base animations using relative bone overrides:
+
+- Use `ObjectRef:set_bone_override(bone, { rotation = { vec = <radians>, absolute = false } })`
+- Or use `Animator:set_additive_layer(name, layer)` from `core.animator`
+
+## Morph targets (optional)
+
+- glTF morph target animation channels (`WEIGHTS`) are ignored (model still loads).
+- If you need facial expressions/emotes today, emulate morphs via:
+  - mesh swapping (`ObjectRef:set_properties({mesh=...})`)
+  - bone scaling/rotation overrides on dedicated facial bones

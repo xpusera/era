@@ -671,6 +671,47 @@ int ObjectRef::l_set_bone_position(lua_State *L)
 	return 0;
 }
 
+int ObjectRef::l_set_bone_rotation(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (sao == nullptr)
+		return 0;
+
+	std::string bone = readParam<std::string>(L, 2);
+
+	v3f rot_deg;
+	int opts_index = 6;
+	if (lua_istable(L, 3)) {
+		rot_deg = check_v3f(L, 3);
+		opts_index = 4;
+	} else {
+		rot_deg = v3f(readParam<float>(L, 3), readParam<float>(L, 4), readParam<float>(L, 5));
+	}
+
+	bool absolute = false;
+	float interpolation = 0.0f;
+	if (!lua_isnoneornil(L, opts_index)) {
+		luaL_checktype(L, opts_index, LUA_TTABLE);
+		lua_getfield(L, opts_index, "absolute");
+		absolute = lua_toboolean(L, -1);
+		lua_pop(L, 1);
+		lua_getfield(L, opts_index, "interpolation");
+		if (lua_isnumber(L, -1))
+			interpolation = lua_tonumber(L, -1);
+		lua_pop(L, 1);
+	}
+
+	BoneOverride props = sao->getBoneOverride(bone);
+	props.rotation.next_radians = rot_deg * core::DEGTORAD;
+	props.rotation.next = core::quaternion(props.rotation.next_radians);
+	props.rotation.absolute = absolute;
+	props.rotation.interp_duration = interpolation;
+	sao->setBoneOverride(bone, props);
+	return 0;
+}
+
 // get_bone_position(self, bone)
 int ObjectRef::l_get_bone_position(lua_State *L)
 {
@@ -2927,6 +2968,7 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, get_animation),
 	luamethod(ObjectRef, set_animation_frame_speed),
 	luamethod(ObjectRef, set_bone_position),
+	luamethod(ObjectRef, set_bone_rotation),
 	luamethod(ObjectRef, get_bone_position),
 	luamethod(ObjectRef, set_bone_override),
 	luamethod(ObjectRef, get_bone_override),

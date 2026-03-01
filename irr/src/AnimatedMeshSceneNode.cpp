@@ -39,7 +39,7 @@ AnimatedMeshSceneNode::AnimatedMeshSceneNode(IAnimatedMesh *mesh,
 		Mesh(nullptr),
 		StartFrame(0), EndFrame(0), FramesPerSecond(0.025f),
 		CurrentFrameNr(0.f), LastTimeMs(0),
-		TransitionTime(0), Transiting(0.f), TransitingBlend(0.f),
+		TransitionTime(0),
 		JointsUsed(false),
 		Looping(true), ReadOnlyMaterials(false), RenderFromIdentity(false),
 		PassCount(0)
@@ -57,10 +57,10 @@ AnimatedMeshSceneNode::~AnimatedMeshSceneNode()
 //! Sets the current frame. From now on the animation is played from this frame.
 void AnimatedMeshSceneNode::setCurrentFrame(f32 frame)
 {
+	BlendActive = false;
 	// if you pass an out of range value, we just clamp it
 	CurrentFrameNr = core::clamp(frame, (f32)StartFrame, (f32)EndFrame);
 
-	beginTransition(); // transit to this frame if enabled
 }
 
 //! Returns the currently displayed frame number.
@@ -72,39 +72,40 @@ f32 AnimatedMeshSceneNode::getFrameNr() const
 //! Get CurrentFrameNr and update transiting settings
 void AnimatedMeshSceneNode::buildFrameNr(u32 timeMs)
 {
-	if (Transiting != 0.f) {
-		TransitingBlend += (f32)(timeMs)*Transiting;
-		if (TransitingBlend > 1.f) {
-			Transiting = 0.f;
-			TransitingBlend = 0.f;
+	auto advance = [](f32 &frame, f32 start, f32 end, f32 fps_ms, bool looping, u32 dt_ms) {
+		if (start == end || fps_ms == 0.f) {
+			frame = start;
+			return;
 		}
+
+		frame += dt_ms * fps_ms;
+		const f32 len = end - start;
+
+		if (looping && len > 0.f) {
+			if (fps_ms > 0.f) {
+				if (frame > end)
+					frame = start + fmodf(frame - start, len);
+			} else {
+				if (frame < start)
+					frame = end - fmodf(end - frame, len);
+			}
+			return;
+		}
+
+		if (fps_ms > 0.f)
+			frame = std::min(frame, end);
+		else
+			frame = std::max(frame, start);
+	};
+
+	if (BlendActive) {
+		advance(BlendCurrentFrameNr, BlendStartFrame, BlendEndFrame, BlendFramesPerSecond, BlendLooping, timeMs);
+		BlendElapsedMs = std::min(BlendElapsedMs + timeMs, BlendDurationMs);
+		if (BlendElapsedMs >= BlendDurationMs)
+			BlendActive = false;
 	}
 
-	if (StartFrame == EndFrame) {
-		CurrentFrameNr = StartFrame; // Support for non animated meshes
-	} else if (Looping) {
-		// play animation looped
-		CurrentFrameNr += timeMs * FramesPerSecond;
-
-		// We have no interpolation between EndFrame and StartFrame,
-		// the last frame must be identical to first one with our current solution.
-		if (FramesPerSecond > 0.f) { // forwards...
-			if (CurrentFrameNr > EndFrame)
-				CurrentFrameNr = StartFrame + fmodf(CurrentFrameNr - StartFrame, EndFrame - StartFrame);
-		} else { // backwards...
-			if (CurrentFrameNr < StartFrame)
-				CurrentFrameNr = EndFrame - fmodf(EndFrame - CurrentFrameNr, EndFrame - StartFrame);
-		}
-	} else {
-		// play animation non looped
-
-		CurrentFrameNr += timeMs * FramesPerSecond;
-		if (FramesPerSecond > 0.f) { // forwards...
-			CurrentFrameNr = std::min(CurrentFrameNr, EndFrame);
-		} else { // backwards...
-			CurrentFrameNr = std::max(CurrentFrameNr, StartFrame);
-		}
-	}
+	advance(CurrentFrameNr, StartFrame, EndFrame, FramesPerSecond, Looping, timeMs);
 }
 
 void AnimatedMeshSceneNode::OnRegisterSceneNode()
@@ -162,10 +163,6 @@ void AnimatedMeshSceneNode::OnAnimate(u32 timeMs)
 	// This needs to be done on animate, which is called recursively *before*
 	// anything is rendered so that the transformations of children are up to date
 	animateJoints();
-
-	// Copy old transforms *before* bone overrides have been applied.
-	// TODO if there are no bone overrides or no animation blending, this is unnecessary.
-	copyOldTransforms();
 
 	if (OnAnimateCallback)
 		OnAnimateCallback(dtimeMs / 1000.0f);
@@ -319,26 +316,98 @@ f32 AnimatedMeshSceneNode::getEndFrame() const
 //! the default is 0 - MaximalFrameCount of the mesh.
 bool AnimatedMeshSceneNode::setFrameLoop(f32 begin, f32 end)
 {
+	if (!Mesh)
+		return false;
+
 	const f32 maxFrame = Mesh->getMaxFrameNumber();
+
+	f32 newStart;
+	f32 newEnd;
 	if (end < begin) {
-		StartFrame = std::clamp<f32>(end, 0, maxFrame);
-		EndFrame = std::clamp<f32>(begin, StartFrame, maxFrame);
+		newStart = std::clamp<f32>(end, 0, maxFrame);
+		newEnd = std::clamp<f32>(begin, newStart, maxFrame);
 	} else {
-		StartFrame = std::clamp<f32>(begin, 0, maxFrame);
-		EndFrame = std::clamp<f32>(end, StartFrame, maxFrame);
+		newStart = std::clamp<f32>(begin, 0, maxFrame);
+		newEnd = std::clamp<f32>(end, newStart, maxFrame);
 	}
-	if (FramesPerSecond < 0)
-		setCurrentFrame(EndFrame);
-	else
-		setCurrentFrame(StartFrame);
+
+	const bool changed = (newStart != StartFrame) || (newEnd != EndFrame);
+	const bool can_blend = changed && TransitionTime != 0 && JointsUsed &&
+			Mesh->getMeshType() == EAMT_SKINNED &&
+			!static_cast<SkinnedMesh *>(Mesh)->isStatic();
+
+	if (can_blend) {
+		BlendActive = true;
+		BlendDurationMs = TransitionTime;
+		BlendElapsedMs = 0;
+		BlendStartFrame = StartFrame;
+		BlendEndFrame = EndFrame;
+		BlendFramesPerSecond = FramesPerSecond;
+		BlendCurrentFrameNr = CurrentFrameNr;
+		BlendLooping = Looping;
+	} else {
+		BlendActive = false;
+	}
+
+	StartFrame = newStart;
+	EndFrame = newEnd;
+	CurrentFrameNr = (FramesPerSecond < 0) ? EndFrame : StartFrame;
 
 	return true;
+}
+
+void AnimatedMeshSceneNode::setAnimation(
+		f32 begin, f32 end, f32 framesPerSecond, bool loop, f32 transitionTime)
+{
+	if (!Mesh)
+		return;
+
+	const f32 maxFrame = Mesh->getMaxFrameNumber();
+
+	f32 newStart;
+	f32 newEnd;
+	if (end < begin) {
+		newStart = std::clamp<f32>(end, 0, maxFrame);
+		newEnd = std::clamp<f32>(begin, newStart, maxFrame);
+	} else {
+		newStart = std::clamp<f32>(begin, 0, maxFrame);
+		newEnd = std::clamp<f32>(end, newStart, maxFrame);
+	}
+
+	const f32 newFpsMs = framesPerSecond * 0.001f;
+	const u32 durationMs = (u32)core::floor32(transitionTime * 1000.0f);
+
+	const bool changed = (newStart != StartFrame) || (newEnd != EndFrame);
+	const bool can_blend = changed && durationMs != 0 && JointsUsed &&
+			Mesh->getMeshType() == EAMT_SKINNED &&
+			!static_cast<SkinnedMesh *>(Mesh)->isStatic();
+
+	if (can_blend) {
+		BlendActive = true;
+		BlendDurationMs = durationMs;
+		BlendElapsedMs = 0;
+		BlendStartFrame = StartFrame;
+		BlendEndFrame = EndFrame;
+		BlendFramesPerSecond = FramesPerSecond;
+		BlendCurrentFrameNr = CurrentFrameNr;
+		BlendLooping = Looping;
+	} else {
+		BlendActive = false;
+	}
+
+	TransitionTime = durationMs;
+	Looping = loop;
+	FramesPerSecond = newFpsMs;
+	StartFrame = newStart;
+	EndFrame = newEnd;
+	CurrentFrameNr = (FramesPerSecond < 0) ? EndFrame : StartFrame;
 }
 
 //! sets the speed with witch the animation is played
 void AnimatedMeshSceneNode::setAnimationSpeed(f32 framesPerSecond)
 {
 	FramesPerSecond = framesPerSecond * 0.001f;
+	CurrentFrameNr = core::clamp(CurrentFrameNr, (f32)StartFrame, (f32)EndFrame);
 }
 
 f32 AnimatedMeshSceneNode::getAnimationSpeed() const
@@ -566,6 +635,37 @@ void AnimatedMeshSceneNode::updateJointSceneNodes(
 }
 
 //! updates the joint positions of this mesh
+static core::Transform matrixToTransform(const core::matrix4 &mat)
+{
+	core::Transform t;
+	t.translation = mat.getTranslation();
+	t.scale = mat.getScale();
+	t.rotation = core::quaternion(mat.getRotationRadians(t.scale));
+	return t;
+}
+
+static SkinnedMesh::SJoint::VariantTransform blendVariantTransform(
+		const SkinnedMesh::SJoint::VariantTransform &from,
+		const SkinnedMesh::SJoint::VariantTransform &to,
+		f32 weight)
+{
+	if (weight <= 0.f)
+		return from;
+	if (weight >= 1.f)
+		return to;
+
+	if (auto *a = std::get_if<core::Transform>(&from)) {
+		if (auto *b = std::get_if<core::Transform>(&to))
+			return a->interpolate(*b, weight);
+		return a->interpolate(matrixToTransform(std::get<core::matrix4>(to)), weight);
+	}
+
+	auto a = matrixToTransform(std::get<core::matrix4>(from));
+	if (auto *b = std::get_if<core::Transform>(&to))
+		return a.interpolate(*b, weight);
+	return a.interpolate(matrixToTransform(std::get<core::matrix4>(to)), weight);
+}
+
 void AnimatedMeshSceneNode::animateJoints()
 {
 	if (!Mesh || Mesh->getMeshType() != EAMT_SKINNED)
@@ -573,22 +673,30 @@ void AnimatedMeshSceneNode::animateJoints()
 
 	checkJoints();
 
-	SkinnedMesh *skinnedMesh = static_cast<SkinnedMesh *>(Mesh);
-	if (!skinnedMesh->isStatic())
-		updateJointSceneNodes(skinnedMesh->animateMesh(getFrameNr()));
+	auto *skinnedMesh = static_cast<SkinnedMesh *>(Mesh);
 
-	//-----------------------------------------
-	//		Transition
-	//-----------------------------------------
-
-	if (Transiting != 0.f) {
-		for (u32 i = 0; i < PerJoint.SceneNodes.size(); ++i) {
-			if (PerJoint.PreTransSaves[i]) {
-				PerJoint.SceneNodes[i]->setTransform(PerJoint.PreTransSaves[i]->interpolate(
-						PerJoint.SceneNodes[i]->getTransform(), TransitingBlend));
-			}
-		}
+	if (skinnedMesh->isStatic()) {
+		const auto &joints = skinnedMesh->getAllJoints();
+		std::vector<SkinnedMesh::SJoint::VariantTransform> rest;
+		rest.reserve(joints.size());
+		for (const auto *joint : joints)
+			rest.push_back(joint->transform);
+		updateJointSceneNodes(rest);
+		return;
 	}
+
+	if (BlendActive && BlendDurationMs > 0) {
+		const f32 weight = std::min(1.f, (f32)BlendElapsedMs / (f32)BlendDurationMs);
+		auto from = skinnedMesh->animateMesh(BlendCurrentFrameNr);
+		auto to = skinnedMesh->animateMesh(getFrameNr());
+		assert(from.size() == to.size());
+		for (size_t i = 0; i < to.size(); ++i)
+			to[i] = blendVariantTransform(from[i], to[i], weight);
+		updateJointSceneNodes(to);
+		return;
+	}
+
+	updateJointSceneNodes(skinnedMesh->animateMesh(getFrameNr()));
 }
 
 void AnimatedMeshSceneNode::checkJoints()
@@ -603,28 +711,6 @@ void AnimatedMeshSceneNode::checkJoints()
 
 		JointsUsed = true;
 	}
-}
-
-void AnimatedMeshSceneNode::copyOldTransforms()
-{
-	for (u32 i = 0; i < PerJoint.SceneNodes.size(); ++i) {
-		if (!PerJoint.SceneNodes[i]->Matrix) {
-			PerJoint.PreTransSaves[i] = PerJoint.SceneNodes[i]->getTransform();
-		} else {
-			PerJoint.PreTransSaves[i] = std::nullopt;
-		}
-	}
-}
-
-void AnimatedMeshSceneNode::beginTransition()
-{
-	if (!JointsUsed)
-		return;
-
-	if (TransitionTime != 0) {
-		Transiting = core::reciprocal((f32)TransitionTime);
-	}
-	TransitingBlend = 0.f;
 }
 
 ISceneNode *AnimatedMeshSceneNode::clone(ISceneNode *newParent, ISceneManager *newManager)
@@ -654,13 +740,18 @@ ISceneNode *AnimatedMeshSceneNode::clone(ISceneNode *newParent, ISceneManager *n
 	newNode->CurrentFrameNr = CurrentFrameNr;
 	newNode->JointsUsed = JointsUsed;
 	newNode->TransitionTime = TransitionTime;
-	newNode->Transiting = Transiting;
-	newNode->TransitingBlend = TransitingBlend;
+	newNode->BlendActive = BlendActive;
+	newNode->BlendDurationMs = BlendDurationMs;
+	newNode->BlendElapsedMs = BlendElapsedMs;
+	newNode->BlendStartFrame = BlendStartFrame;
+	newNode->BlendEndFrame = BlendEndFrame;
+	newNode->BlendFramesPerSecond = BlendFramesPerSecond;
+	newNode->BlendCurrentFrameNr = BlendCurrentFrameNr;
+	newNode->BlendLooping = BlendLooping;
 	newNode->Looping = Looping;
 	newNode->ReadOnlyMaterials = ReadOnlyMaterials;
 	newNode->PassCount = PassCount;
 	newNode->PerJoint.SceneNodes = PerJoint.SceneNodes;
-	newNode->PerJoint.PreTransSaves = PerJoint.PreTransSaves;
 	newNode->RenderFromIdentity = RenderFromIdentity;
 
 	return newNode;

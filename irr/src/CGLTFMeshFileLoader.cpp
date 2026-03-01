@@ -667,7 +667,8 @@ void SelfType::MeshExtractor::loadAnimations()
 				scl_any[node] = true;
 				break;
 			case tiniergltf::AnimationChannelTarget::Path::WEIGHTS:
-				throw std::runtime_error("no support for morph animations");
+				warn("morph target animation channels are ignored");
+				break;
 			}
 		}
 	}
@@ -746,7 +747,8 @@ void SelfType::MeshExtractor::loadAnimations()
 				break;
 			}
 			case tiniergltf::AnimationChannelTarget::Path::WEIGHTS:
-				throw std::runtime_error("no support for morph animations");
+				warn("morph target animation channels are ignored");
+				continue;
 			}
 		}
 

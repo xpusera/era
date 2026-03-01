@@ -130,6 +130,9 @@ private:
 	// set_bone_position(self, bone, position, rotation)
 	static int l_set_bone_position(lua_State *L);
 
+	// set_bone_rotation(self, bone, x, y, z, opts?)
+	static int l_set_bone_rotation(lua_State *L);
+
 	// get_bone_position(self, bone)
 	static int l_get_bone_position(lua_State *L);
 

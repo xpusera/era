@@ -8561,6 +8561,14 @@ child will follow movement and rotation of that bone.
       ```
     * **Note:** Rotation is in degrees, not radians.
     * **Deprecated:** Use `set_bone_override` instead.
+* `set_bone_rotation(bone, x, y, z, opts?)`
+    * Convenience method to set a bone rotation override
+    * `bone`: string
+    * `x, y, z`: rotation in degrees
+    * `opts`: optional table
+        * `absolute`: boolean (default: `false`)
+        * `interpolation`: number seconds (default: `0`)
+    * Equivalent to `set_bone_override(bone, { rotation = { vec = {x=rad(x), y=rad(y), z=rad(z)}, absolute = absolute, interpolation = interpolation } })`
 * `get_bone_position(bone)`: returns the previously set position and rotation of the bone
     * Shorthand for `get_bone_override(bone).position.vec, get_bone_override(bone).rotation.vec:apply(math.deg)`.
     * **Note:** Returned rotation is in degrees, not radians.
