@@ -45,6 +45,9 @@ void UnitSAO::setAnimation(
 	m_animation_speed = frame_speed;
 	m_animation_blend = frame_blend;
 	m_animation_loop = frame_loop;
+	m_animation_clip_type = 0;
+	m_animation_clip_index = 0;
+	m_animation_clip_name.clear();
 	m_animation_sent = false;
 }
 
@@ -63,6 +66,49 @@ void UnitSAO::setAnimationSpeed(float frame_speed)
 		return;
 	m_animation_speed = frame_speed;
 	m_animation_speed_sent = false;
+}
+
+void UnitSAO::setAnimationClipByIndex(u16 clip_index, v2f frame_range,
+		float frame_speed, float frame_blend, bool frame_loop)
+{
+	m_animation_range = frame_range;
+	m_animation_speed = frame_speed;
+	m_animation_blend = frame_blend;
+	m_animation_loop = frame_loop;
+	m_animation_clip_type = 1;
+	m_animation_clip_index = clip_index;
+	m_animation_clip_name.clear();
+	m_animation_sent = false;
+}
+
+void UnitSAO::setAnimationClipByName(const std::string &clip_name, v2f frame_range,
+		float frame_speed, float frame_blend, bool frame_loop)
+{
+	m_animation_range = frame_range;
+	m_animation_speed = frame_speed;
+	m_animation_blend = frame_blend;
+	m_animation_loop = frame_loop;
+	m_animation_clip_type = 2;
+	m_animation_clip_index = 0;
+	m_animation_clip_name = clip_name;
+	m_animation_sent = false;
+}
+
+void UnitSAO::clearAnimationClip()
+{
+	if (m_animation_clip_type == 0)
+		return;
+	m_animation_clip_type = 0;
+	m_animation_clip_index = 0;
+	m_animation_clip_name.clear();
+	m_animation_sent = false;
+}
+
+void UnitSAO::getAnimationClip(u8 *clip_type, u16 *clip_index, std::string *clip_name) const
+{
+	*clip_type = m_animation_clip_type;
+	*clip_index = m_animation_clip_index;
+	*clip_name = m_animation_clip_name;
 }
 
 void UnitSAO::setBoneOverride(const std::string &bone, const BoneOverride &props)
@@ -342,6 +388,12 @@ std::string UnitSAO::generateUpdateAnimationCommand() const
 	writeF32(os, m_animation_blend);
 	// these are sent inverted so we get true when the server sends nothing
 	writeU8(os, !m_animation_loop);
+	writeU8(os, m_animation_clip_type);
+	if (m_animation_clip_type == 1) {
+		writeU16(os, m_animation_clip_index);
+	} else if (m_animation_clip_type == 2) {
+		os << serializeString16(m_animation_clip_name);
+	}
 	return os.str();
 }
 

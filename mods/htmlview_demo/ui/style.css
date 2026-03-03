@@ -1,0 +1,74 @@
+:root{
+  --bg:#0b0e14;
+  --panel:#121826;
+  --card:#0f1420;
+  --text:#e8ecff;
+  --muted:#9aa7c7;
+  --line:rgba(255,255,255,.08);
+  --accent:#6ea8ff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background: radial-gradient(1200px 800px at 20% 10%, rgba(110,168,255,.15), transparent 60%),
+              radial-gradient(1200px 800px at 80% 70%, rgba(180,110,255,.12), transparent 55%),
+              var(--bg);
+  color:var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto;
+}
+.frame{
+  padding:14px;
+}
+.header{
+  padding:12px 12px 10px;
+  border:1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border-radius:16px;
+}
+.title{font-weight:800; letter-spacing:.2px; font-size:18px}
+.sub{color:var(--muted); font-size:12px; margin-top:2px}
+.grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:12px;
+  margin-top:12px;
+}
+.card{
+  border:1px solid var(--line);
+  background: rgba(15,20,32,.8);
+  backdrop-filter: blur(6px);
+  border-radius:16px;
+  padding:12px;
+}
+.cardTitle{font-weight:700; margin-bottom:8px}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.op{color:var(--muted)}
+input{
+  width:90px;
+  background:#0a0f19;
+  border:1px solid var(--line);
+  color:var(--text);
+  padding:10px 10px;
+  border-radius:12px;
+  outline:none;
+}
+button{
+  border-radius:12px;
+  border:1px solid var(--line);
+  background: linear-gradient(180deg, rgba(110,168,255,.18), rgba(110,168,255,.08));
+  color:var(--text);
+  padding:10px 12px;
+  font-weight:650;
+}
+button:active{transform: translateY(1px)}
+.out{margin-top:10px; color:var(--muted); font-size:13px; line-height:1.35}
+.hint{margin-top:10px; color:rgba(154,167,199,.85); font-size:12px}
+code{color:#cfe1ff}
+.footer{
+  margin-top:12px;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.link{color:var(--accent); text-decoration:none; font-weight:650}

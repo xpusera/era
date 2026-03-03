@@ -83,6 +83,12 @@ public:
 	//! NOTE: setMesh will also change this value and set it to the full range of animations of the mesh
 	bool setFrameLoop(f32 begin, f32 end);
 
+	//! Convenience method to set all animation parameters at once.
+	//! This restarts playback, like setFrameLoop().
+	//! If transitionTime > 0, performs a crossfade where both old and new animations
+	//! continue advancing during the blend.
+	void setAnimation(f32 begin, f32 end, f32 framesPerSecond, bool loop, f32 transitionTime);
+
 	//! Sets looping mode which is on by default. If set to false,
 	//! animations will not be looped.
 	void setLoopMode(bool playAnimationLooped);
@@ -160,8 +166,6 @@ private:
 
 	void buildFrameNr(u32 timeMs);
 	void checkJoints();
-	void copyOldTransforms();
-	void beginTransition();
 
 	core::array<video::SMaterial> Materials;
 	core::aabbox3d<f32> Box{{0.0f, 0.0f, 0.0f}};
@@ -174,8 +178,15 @@ private:
 
 	u32 LastTimeMs;
 	u32 TransitionTime;  // Transition time in millisecs
-	f32 Transiting;      // is mesh transiting (plus cache of TransitionTime)
-	f32 TransitingBlend; // 0-1, calculated on buildFrameNr
+
+	bool BlendActive = false;
+	u32 BlendDurationMs = 0;
+	u32 BlendElapsedMs = 0;
+	f32 BlendStartFrame = 0;
+	f32 BlendEndFrame = 0;
+	f32 BlendFramesPerSecond = 0;
+	f32 BlendCurrentFrameNr = 0;
+	bool BlendLooping = true;
 
 	bool JointsUsed;
 
@@ -189,14 +200,11 @@ private:
 	struct PerJointData {
 		std::vector<irr_ptr<BoneSceneNode>> SceneNodes;
 		std::vector<core::matrix4> GlobalMatrices;
-		std::vector<std::optional<core::Transform>> PreTransSaves;
 		void setN(u16 n) {
 			SceneNodes.clear();
 			SceneNodes.resize(n);
 			GlobalMatrices.clear();
 			GlobalMatrices.resize(n);
-			PreTransSaves.clear();
-			PreTransSaves.resize(n);
 		}
 	};
 

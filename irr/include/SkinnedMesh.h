@@ -55,6 +55,35 @@ public:
 	//! Important for legacy reasons pertaining to different mesh loader behavior.
 	SourceFormat getSourceFormat() const { return SrcFormat; }
 
+	struct AnimationClip {
+		std::string name;
+		f32 start = 0.0f;
+		f32 end = 0.0f;
+	};
+
+	u32 getAnimationClipCount() const { return AnimationClips.size(); }
+
+	const AnimationClip *getAnimationClip(u32 index) const
+	{
+		return index < AnimationClips.size() ? &AnimationClips[index] : nullptr;
+	}
+
+	std::optional<u32> getAnimationClipIndex(const std::string &name) const
+	{
+		for (u32 i = 0; i < AnimationClips.size(); ++i) {
+			if (AnimationClips[i].name == name)
+				return i;
+		}
+		return std::nullopt;
+	}
+
+	const AnimationClip *getAnimationClipByName(const std::string &name) const
+	{
+		if (auto idx = getAnimationClipIndex(name))
+			return getAnimationClip(*idx);
+		return nullptr;
+	}
+
 	//! If the duration is 0, it is a static (=non animated) mesh.
 	f32 getMaxFrameNumber() const override;
 
@@ -148,9 +177,9 @@ public:
 		struct Frame {
 			f32 time;
 			T value;
+			bool interpolate_to_next = true;
 		};
 		std::vector<Frame> frames;
-		bool interpolate = true;
 
 		bool empty() const {
 			return frames.empty();
@@ -160,8 +189,8 @@ public:
 			return frames.empty() ? 0 : frames.back().time;
 		}
 
-		void pushBack(f32 time, const T &value) {
-			frames.push_back({time, value});
+		void pushBack(f32 time, const T &value, bool interpolate_to_next = true) {
+			frames.push_back({time, value, interpolate_to_next});
 		}
 
 		void append(const Channel<T> &other) {
@@ -218,7 +247,7 @@ public:
 				return frames.back().value;
 
 			const auto prev = next - 1;
-			if (!interpolate)
+			if (!prev->interpolate_to_next)
 				return prev->value;
 
 			return interpolateValue(prev->value, next->value, (time - prev->time) / (next->time - prev->time));
@@ -361,6 +390,8 @@ protected:
 	//! Joints, topologically sorted (parents come before their children).
 	std::vector<SJoint *> AllJoints;
 
+	std::vector<AnimationClip> AnimationClips;
+
 	//! Bounding box of just the static parts of the mesh
 	core::aabbox3df StaticPartsBox{{0, 0, 0}};
 
@@ -426,6 +457,16 @@ public:
 
 	//! Adds a new weight to the mesh
 	void addWeight(SJoint *joint, u16 buf, u32 vert_id, f32 strength);
+
+	void addAnimationClip(std::string name, f32 start, f32 end)
+	{
+		mesh->AnimationClips.push_back({std::move(name), start, end});
+	}
+
+	void clearAnimationClips()
+	{
+		mesh->AnimationClips.clear();
+	}
 
 private:
 

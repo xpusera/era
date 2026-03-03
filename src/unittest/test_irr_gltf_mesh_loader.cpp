@@ -480,6 +480,46 @@ SECTION("simple skin")
 	}
 }
 
+SECTION("multi animation clips")
+{
+	using SkinnedMesh = scene::SkinnedMesh;
+	const auto mesh = loadMesh(model_stem + "simple_skin_multi_animations.gltf");
+	REQUIRE(mesh != nullptr);
+	auto csm = dynamic_cast<const SkinnedMesh*>(mesh);
+	REQUIRE(csm != nullptr);
+
+	REQUIRE(csm->getAnimationClipCount() == 2);
+	const auto *clip0 = csm->getAnimationClip(0);
+	const auto *clip1 = csm->getAnimationClip(1);
+	REQUIRE(clip0 != nullptr);
+	REQUIRE(clip1 != nullptr);
+	CHECK(clip0->name == "step");
+	CHECK(clip1->name == "linear");
+	CHECK(clip0->start == Catch::Approx(0.0f));
+	CHECK(clip0->end > clip0->start);
+	CHECK(clip1->start > clip0->end);
+	CHECK(clip1->end > clip1->start);
+
+	const SkinnedMesh::SJoint *animated = nullptr;
+	for (const auto *joint : csm->getAllJoints()) {
+		if (!joint->keys.rotation.frames.empty()) {
+			animated = joint;
+			break;
+		}
+	}
+	REQUIRE(animated != nullptr);
+	const auto &frames = animated->keys.rotation.frames;
+	REQUIRE(frames.size() >= 24);
+
+	CHECK(frames.front().interpolate_to_next == false);
+
+	auto it = std::find_if(frames.begin(), frames.end(), [&](const auto &f) {
+		return f.time >= clip1->start;
+	});
+	REQUIRE(it != frames.end());
+	CHECK(it->interpolate_to_next == true);
+}
+
 driver->closeDevice();
 driver->drop();
 }

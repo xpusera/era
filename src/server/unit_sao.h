@@ -54,6 +54,13 @@ public:
 			bool *frame_loop) override;
 	void setAnimationSpeed(float frame_speed) override;
 
+	void setAnimationClipByIndex(u16 clip_index, v2f frame_range, float frame_speed,
+			float frame_blend, bool frame_loop) override;
+	void setAnimationClipByName(const std::string &clip_name, v2f frame_range,
+			float frame_speed, float frame_blend, bool frame_loop) override;
+	void clearAnimationClip() override;
+	void getAnimationClip(u8 *clip_type, u16 *clip_index, std::string *clip_name) const override;
+
 	// Bone position
 	void setBoneOverride(const std::string &bone, const BoneOverride &props) override;
 	BoneOverride getBoneOverride(const std::string &bone) override;
@@ -137,6 +144,9 @@ private:
 	float m_animation_speed = 0.0f;
 	float m_animation_blend = 0.0f;
 	bool m_animation_loop = true;
+	u8 m_animation_clip_type = 0;
+	u16 m_animation_clip_index = 0;
+	std::string m_animation_clip_name;
 	bool m_animation_sent = false;
 	bool m_animation_speed_sent = false;
 

@@ -120,6 +120,9 @@ private:
 	v2f m_animation_range;
 	float m_animation_speed = 15.0f;
 	float m_animation_blend = 0.0f;
+	u8 m_animation_clip_type = 0;
+	u16 m_animation_clip_index = 0;
+	std::string m_animation_clip_name;
 	int m_anim_frame = 0;
 	int m_anim_num_frames = 1;
 	float m_anim_framelength = 0.2f;

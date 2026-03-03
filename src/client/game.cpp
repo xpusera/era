@@ -16,6 +16,11 @@
 #include "clientmap.h"
 #include "clientmedia.h" // For clientMediaUpdateCacheCopy
 #include "config.h"
+
+#ifdef __ANDROID__
+#include "htmlview_jni.h"
+#endif
+
 #include "content_cao.h"
 #include "content/subgames.h"
 #include "client/event_manager.h"

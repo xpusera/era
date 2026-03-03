@@ -118,6 +118,9 @@ private:
 	// set_animation(self, frame_range, frame_speed, frame_blend, frame_loop)
 	static int l_set_animation(lua_State *L);
 
+	// set_animation_clip(self, clip, frame_range, frame_speed, frame_blend, frame_loop)
+	static int l_set_animation_clip(lua_State *L);
+
 	// set_animation_frame_speed(self, frame_speed)
 	static int l_set_animation_frame_speed(lua_State *L);
 
@@ -126,6 +129,9 @@ private:
 
 	// set_bone_position(self, bone, position, rotation)
 	static int l_set_bone_position(lua_State *L);
+
+	// set_bone_rotation(self, bone, x, y, z, opts?)
+	static int l_set_bone_rotation(lua_State *L);
 
 	// get_bone_position(self, bone)
 	static int l_get_bone_position(lua_State *L);

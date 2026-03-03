@@ -155,7 +155,7 @@ private:
 
 		void loadSkins();
 
-		void loadAnimation(const std::size_t animIdx);
+		void loadAnimations();
 	};
 
 	tiniergltf::GlTF parseGLTF(io::IReadFile *file);

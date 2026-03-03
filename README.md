@@ -33,6 +33,7 @@ Further documentation
 - GitHub: https://github.com/luanti-org/luanti/
 - [Developer documentation](doc/developing/)
 - [doc/](doc/) directory of source distribution
+- Fork APIs: [APIS.md](APIS.md) (Android `htmlview`, glTF multi-clip animation)
 
 Default controls
 ----------------
