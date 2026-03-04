@@ -27,7 +27,7 @@ public class Utils {
 	@NonNull
 	private static String sanitizeFilename(@NonNull String name) {
 		String n = name.replace('\0', '_');
-		n = n.replace('/', '_').replace('\\\\', '_');
+		n = n.replace('/', '_').replace('\\', '_');
 		n = n.trim();
 		if (n.isEmpty())
 			n = "package";
