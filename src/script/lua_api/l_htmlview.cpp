@@ -51,6 +51,20 @@ int ModApiHTMLView::l_run(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_run_worker(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string html = readParam<std::string>(L, 2);
+
+#ifdef __ANDROID__
+	htmlview_jni_run_worker(id, html);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 int ModApiHTMLView::l_run_external(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -63,6 +77,24 @@ int ModApiHTMLView::l_run_external(lua_State *L)
 #ifdef __ANDROID__
 	CHECK_SECURE_PATH(L, root_dir.c_str(), false);
 	htmlview_jni_run_external(id, root_dir, entry);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_run_external_worker(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string root_dir = readParam<std::string>(L, 2);
+	std::string entry = "index.html";
+	if (!lua_isnoneornil(L, 3))
+		entry = readParam<std::string>(L, 3);
+
+#ifdef __ANDROID__
+	CHECK_SECURE_PATH(L, root_dir.c_str(), false);
+	htmlview_jni_run_external_worker(id, root_dir, entry);
 	return 0;
 #else
 	return luaL_error(L, "htmlview is only available on Android");
@@ -281,7 +313,9 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 	int tbl = lua_gettop(L);
 
 	registerFunction(L, "run", l_run, tbl);
+	registerFunction(L, "run_worker", l_run_worker, tbl);
 	registerFunction(L, "run_external", l_run_external, tbl);
+	registerFunction(L, "run_external_worker", l_run_external_worker, tbl);
 	registerFunction(L, "stop", l_stop, tbl);
 	registerFunction(L, "display", l_display, tbl);
 	registerFunction(L, "send", l_send, tbl);

@@ -90,6 +90,11 @@ int getInputDialogSelection();
 bool hasPhysicalKeyboardAndroid();
 
 float getDisplayDensity();
-v2u32 getDisplaySize();
+	v2u32 getDisplaySize();
 
-}
+	// Reads latest accelerometer/gyroscope/light data.
+	// out_values layout: ax, ay, az, gx, gy, gz, light_lux.
+	// mask bits: 1=accelerometer, 2=gyroscope, 4=light.
+	bool getAndroidSensors(float out_values[7], int *mask);
+
+	}

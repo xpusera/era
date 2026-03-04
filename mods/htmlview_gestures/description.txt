@@ -1,0 +1,2 @@
+Transparent full-screen gesture overlay demo (Android htmlview).
+

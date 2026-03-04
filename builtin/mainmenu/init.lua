@@ -135,9 +135,17 @@ local function init_globals()
 	parent = migrate_keybindings(parent)
 	check_reinstall_mtg(parent)
 
-	-- asynchronous, will only be shown if we're still on "maintab"
-	check_new_version()
-end
+		-- asynchronous, will only be shown if we're still on "maintab"
+		check_new_version()
+
+		local pending = xp_import and xp_import.consume_pending and xp_import.consume_pending() or {}
+		if #pending > 0 then
+			local dlg = create_xp_import_dialog(pending)
+			dlg:set_parent(tv_main)
+			tv_main:hide()
+			dlg:show()
+		end
+	end
 
 assert(os.execute == nil)
 init_globals()

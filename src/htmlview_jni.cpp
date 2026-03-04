@@ -168,10 +168,21 @@ void htmlview_jni_run(const std::string &id, const std::string &html)
 	callVoidMethod2Str("htmlview_run", id, html);
 }
 
+void htmlview_jni_run_worker(const std::string &id, const std::string &html)
+{
+	callVoidMethod2Str("htmlview_run_worker", id, html);
+}
+
 void htmlview_jni_run_external(const std::string &id, const std::string &root_dir,
 		const std::string &entry)
 {
 	callVoidMethod3Str("htmlview_run_external", id, root_dir, entry);
+}
+
+void htmlview_jni_run_external_worker(const std::string &id, const std::string &root_dir,
+		const std::string &entry)
+{
+	callVoidMethod3Str("htmlview_run_external_worker", id, root_dir, entry);
 }
 
 void htmlview_jni_stop(const std::string &id)

@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0);
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: system-ui, sans-serif;
+    }
+    #debug {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      padding: 8px 10px;
+      background: rgba(0,0,0,0.25);
+      color: rgba(255,255,255,0.9);
+      border-radius: 10px;
+      font-size: 12px;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+    }
+  </style>
+</head>
+<body>
+  <div id="debug">gesture overlay</div>
+
+  <script>
+    const debug = document.getElementById('debug');
+
+    function dist(a, b) {
+      const dx = a.clientX - b.clientX;
+      const dy = a.clientY - b.clientY;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    let pinchStartDist = null;
+    let swipe3Start = null;
+    let swipe3Last = null;
+    let lastSent = 0;
+
+    function maybeSend(obj) {
+      const now = performance.now();
+      if (now - lastSent < 33) return;
+      lastSent = now;
+      try { luanti.send(JSON.stringify(obj)); } catch (e) {}
+    }
+
+    function onTouch(ev) {
+      ev.preventDefault();
+      const touches = ev.touches;
+      debug.textContent = `touches=${touches.length}`;
+
+      if (touches.length === 2) {
+        const d = dist(touches[0], touches[1]);
+        if (pinchStartDist === null) pinchStartDist = d;
+        const scale = pinchStartDist > 0 ? (d / pinchStartDist) : 1;
+        maybeSend({ type: 'pinch', scale, touches: 2 });
+        return;
+      }
+
+      pinchStartDist = null;
+
+      if (touches.length === 3) {
+        const cx = (touches[0].clientX + touches[1].clientX + touches[2].clientX) / 3;
+        const cy = (touches[0].clientY + touches[1].clientY + touches[2].clientY) / 3;
+        if (!swipe3Start) {
+          swipe3Start = { x: cx, y: cy };
+          swipe3Last = { x: cx, y: cy };
+        } else {
+          const dx = cx - swipe3Start.x;
+          const dy = cy - swipe3Start.y;
+          const ddx = cx - swipe3Last.x;
+          const ddy = cy - swipe3Last.y;
+          swipe3Last = { x: cx, y: cy };
+          maybeSend({ type: 'swipe3', dx, dy, ddx, ddy, touches: 3 });
+        }
+        return;
+      }
+
+      swipe3Start = null;
+      swipe3Last = null;
+    }
+
+    window.addEventListener('touchstart', onTouch, { passive: false });
+    window.addEventListener('touchmove', onTouch, { passive: false });
+    window.addEventListener('touchend', onTouch, { passive: false });
+    window.addEventListener('touchcancel', onTouch, { passive: false });
+  </script>
+</body>
+</html>
+

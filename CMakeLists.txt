@@ -5,7 +5,7 @@ endif()
 
 # This can be read from ${PROJECT_NAME} after project() is called
 project(luanti)
-set(PROJECT_NAME_CAPITALIZED "Luanti")
+set(PROJECT_NAME_CAPITALIZED "Minetek")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)

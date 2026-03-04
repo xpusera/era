@@ -7,10 +7,13 @@ permissions:
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/gltf-anim-upgrade
 
 jobs:
   build:
-    if: github.repository == 'luanti-org/luanti'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

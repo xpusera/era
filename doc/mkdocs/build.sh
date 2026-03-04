@@ -1,31 +1,45 @@
 #!/bin/sh -e
 
 # Split lua_api.md on top level headings
+rm -f docs/section*
 cat ../lua_api.md | csplit -sz -f docs/section - '/^=/-1' '{*}'
 
 cat > mkdocs.yml << EOF
-site_name: Luanti API Documentation
+site_name: Minetek Documentation
 theme:
-    name: readthedocs
-    highlightjs: False
+  name: material
+  palette:
+    - scheme: slate
+      primary: black
+      accent: light blue
+  features:
+    - navigation.sections
+    - navigation.top
 extra_css:
-    - css/code_styles.css
-    - css/extra.css
+  - css/code_styles.css
+  - css/extra.css
 markdown_extensions:
-    - toc:
-        permalink: True
-    - pymdownx.superfences
-    - pymdownx.highlight:
-        css_class: codehilite
-    - gfm_admonition
+  - toc:
+      permalink: True
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      css_class: codehilite
+  - gfm_admonition
 plugins:
-    - search:
-        separator: '[\s\-\.\(]+'
+  - search:
+      separator: '[\s\-\.\(]+'
 nav:
-- "Home": index.md
+  - "Home": index.md
+  - "Fork APIs": fork-apis.md
+  - "Menu Lua API": menu-lua-api.md
+  - "Client Lua API": client-lua-api.md
 EOF
 
 mv docs/section00 docs/index.md
+
+cp -f ../../APIS.md docs/fork-apis.md
+cp -f ../menu_lua_api.md docs/menu-lua-api.md
+cp -f ../client_lua_api.md docs/client-lua-api.md
 
 for f in docs/section*
 do
@@ -34,7 +48,7 @@ do
 	fname=$(echo $fname | sed 's/ /-/g')
 	fname=$(echo $fname | sed "s/'//g").md
 	mv $f docs/$fname
-	echo "- \"$title\": $fname" >> mkdocs.yml
+	echo "  - \"$title\": $fname" >> mkdocs.yml
 done
 
 mkdocs build --site-dir ../../public

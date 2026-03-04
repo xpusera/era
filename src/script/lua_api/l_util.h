@@ -100,6 +100,9 @@ private:
 	// get_version()
 	static int l_get_version(lua_State *L);
 
+	// get_android_sensors()
+	static int l_get_android_sensors(lua_State *L);
+
 	// sha1(string, raw)
 	static int l_sha1(lua_State *L);
 
