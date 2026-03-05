@@ -92,13 +92,6 @@ public class MainActivity extends AppCompatActivity {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 
-		try {
-			int imported = Utils.importXpFromIntent(this, getIntent());
-			if (imported > 0)
-				Toast.makeText(this, "Imported " + imported + " .xp package(s)", Toast.LENGTH_SHORT).show();
-		} catch (Exception ignored) {
-		}
-
 		IntentFilter filter = new IntentFilter(ACTION_UPDATE);
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			registerReceiver(myReceiver, filter, RECEIVER_NOT_EXPORTED);
@@ -120,12 +113,6 @@ public class MainActivity extends AppCompatActivity {
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
 		setIntent(intent);
-		try {
-			int imported = Utils.importXpFromIntent(this, intent);
-			if (imported > 0)
-				Toast.makeText(this, "Imported " + imported + " .xp package(s)", Toast.LENGTH_SHORT).show();
-		} catch (Exception ignored) {
-		}
 	}
 
 	private void checkAppVersion() {

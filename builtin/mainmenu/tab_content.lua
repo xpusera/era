@@ -57,24 +57,12 @@ local function get_formspec(tabview, name, tabdata)
 	local packages_with_updates = update_detector.get_all()
 	local update_icons = get_content_icons(packages_with_updates)
 	local update_count = #packages_with_updates
-	local pending_count = 0
-	if xp_import and type(xp_import.get_pending) == "function" then
-		pending_count = #xp_import.get_pending()
-	end
 	local contentdb_label
 	if update_count == 0 then
 		contentdb_label = fgettext("Browse online content")
 	else
 		-- TRANSLATORS: $1 = number of available updates
 		contentdb_label = fgettext("Browse online content [$1]", update_count)
-	end
-
-	local import_xp_label
-	if pending_count > 0 then
-		-- TRANSLATORS: $1 = number of pending imports
-		import_xp_label = fgettext("Import .xp [$1]", pending_count)
-	else
-		import_xp_label = fgettext("Import .xp")
 	end
 
 	local retval = {
@@ -88,8 +76,7 @@ local function get_formspec(tabview, name, tabdata)
 		pkgmgr.render_packagelist(packages, use_technical_names, update_icons),
 		";", tabdata.selected_pkg, "]",
 
-		"button[0.4,5.8;3.05,0.9;btn_contentdb;", contentdb_label, "]",
-		"button[3.65,5.8;3.05,0.9;btn_import_xp;", import_xp_label, "]"
+		"button[0.4,5.8;3.05,0.9;btn_contentdb;", contentdb_label, "]"
 	}
 
 	local selected_pkg
@@ -234,15 +221,6 @@ local function handle_buttons(tabview, fields, tabname, tabdata)
 
 	if fields.btn_contentdb then
 		local dlg = create_contentdb_dlg()
-		dlg:set_parent(tabview)
-		tabview:hide()
-		dlg:show()
-		packages = nil
-		return true
-	end
-
-	if fields.btn_import_xp then
-		local dlg = create_xp_import_dialog()
 		dlg:set_parent(tabview)
 		tabview:hide()
 		dlg:show()

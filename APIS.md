@@ -1,6 +1,6 @@
 # Fork APIs
 
-This fork adds Android `htmlview` APIs (including headless workers), Android sensor access, `.xp` content packages, and upgrades glTF animation support.
+This fork adds Android `htmlview` APIs (including headless workers), Android sensor access, and upgrades glTF animation support.
 
 ## Android: `htmlview` (Lua)
 
@@ -201,22 +201,3 @@ Returns `nil` on non-Android builds, otherwise:
 }
 ```
 
-## `.xp` content packages
-
-`.xp` files are ZIP archives used for distributing content bundles.
-
-Archive structure:
-
-```
-mods/<mod_or_modpack_1>/...
-mods/<mod_or_modpack_2>/...
-games/<game_1>/...
-textures/<texture_pack_1>/...
-```
-
-Top-level folders are optional (`mods/`, `games/`, `textures/` / `texture/` / `texture_packs/`), but the archive must contain at least one.
-
-Install flow:
-- Copy `.xp` files into `<userpath>/imports/`.
-- Or on Android: open the `.xp` file with the app (it will be copied into `imports/` automatically).
-- In main menu: `Content` tab → `Import .xp`.
