@@ -80,48 +80,79 @@ public class Utils {
 		}
 	}
 
-	public static boolean importXpFromIntent(@NonNull Context context, @NonNull Intent intent) {
+	private static int importXpFromUri(@NonNull Context context, @NonNull Uri uri) throws Exception {
+		String rawName = getDisplayName(context, uri);
+		String seg = uri.getLastPathSegment();
+		boolean looksXp = isXpName(rawName) || (seg != null && isXpName(seg));
+		if (!looksXp)
+			return 0;
+
+		String display = sanitizeFilename(rawName);
+		if (!isXpName(display))
+			display = display + ".xp";
+
+		File userData = getUserDataDirectory(context);
+		File importsDir = createDirs(userData, "imports");
+		File dst = uniqueFile(importsDir, display);
+
+		String scheme = uri.getScheme();
+		try (InputStream in = ("file".equals(scheme) ? new FileInputStream(new File(uri.getPath()))
+				: context.getContentResolver().openInputStream(uri))) {
+			if (in == null)
+				return 0;
+			try (OutputStream out = new FileOutputStream(dst)) {
+				copyStream(in, out);
+			}
+		}
+
+		File pending = new File(importsDir, ".pending_xp_imports.txt");
+		try (FileOutputStream fos = new FileOutputStream(pending, true)) {
+			fos.write(dst.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
+			fos.write('\n');
+		}
+
+		return 1;
+	}
+
+	public static int importXpFromIntent(@NonNull Context context, @NonNull Intent intent) {
 		try {
 			String action = intent.getAction();
-			if (!Intent.ACTION_VIEW.equals(action))
-				return false;
-			Uri uri = intent.getData();
-			if (uri == null)
-				return false;
+			if (Intent.ACTION_VIEW.equals(action)) {
+				Uri uri = intent.getData();
+				if (uri == null)
+					return 0;
+				return importXpFromUri(context, uri);
+			}
 
-			String rawName = getDisplayName(context, uri);
-			String seg = uri.getLastPathSegment();
-			boolean looksXp = isXpName(rawName) || (seg != null && isXpName(seg));
-			if (!looksXp)
-				return false;
-			String display = sanitizeFilename(rawName);
-			if (!isXpName(display))
-				display = display + ".xp";
+			if (Intent.ACTION_SEND.equals(action)) {
+				Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+				if (uri == null)
+					return 0;
+				return importXpFromUri(context, uri);
+			}
 
-			File userData = getUserDataDirectory(context);
-			File importsDir = createDirs(userData, "imports");
-			File dst = uniqueFile(importsDir, display);
-
-			String scheme = uri.getScheme();
-			try (InputStream in = ("file".equals(scheme) ? new FileInputStream(new File(uri.getPath()))
-					: context.getContentResolver().openInputStream(uri))) {
-				if (in == null)
-					return false;
-				try (OutputStream out = new FileOutputStream(dst)) {
-					copyStream(in, out);
+			if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+				int ok = 0;
+				if (intent.getClipData() != null) {
+					int n = intent.getClipData().getItemCount();
+					for (int i = 0; i < n; i++) {
+						Uri uri = intent.getClipData().getItemAt(i).getUri();
+						if (uri != null)
+							ok += importXpFromUri(context, uri);
+					}
+				} else if (intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM) != null) {
+					for (Uri uri : Objects.requireNonNull(intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM))) {
+						if (uri != null)
+							ok += importXpFromUri(context, uri);
+					}
 				}
+				return ok;
 			}
 
-			File pending = new File(importsDir, ".pending_xp_imports.txt");
-			try (FileOutputStream fos = new FileOutputStream(pending, true)) {
-				fos.write(dst.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
-				fos.write('\n');
-			}
-
-			return true;
+			return 0;
 		} catch (Exception e) {
 			Log.w("Utils", "importXpFromIntent failed", e);
-			return false;
+			return 0;
 		}
 	}
 

@@ -72,24 +72,69 @@ function xp_import.get_pending_file()
 	return xp_import.get_import_dir() .. DIR_DELIM .. ".pending_xp_imports.txt"
 end
 
-function xp_import.consume_pending()
-	local pending_path = xp_import.get_pending_file()
-	local f = io.open(pending_path, "r")
-	if not f then
-		return {}
-	end
-	local out = {}
-	for line in f:lines() do
-		line = trim(line)
-		if line ~= "" and core.path_exists(line) and has_ext(line, ".xp") then
-			out[#out + 1] = line
+	function xp_import.get_pending()
+		local pending_path = xp_import.get_pending_file()
+		local f = io.open(pending_path, "r")
+		if not f then
+			return {}
 		end
+		local out = {}
+		local seen = {}
+		for line in f:lines() do
+			line = trim(line)
+			if line ~= "" and not seen[line] and core.path_exists(line) and has_ext(line, ".xp") then
+				seen[line] = true
+				out[#out + 1] = line
+			end
+		end
+		f:close()
+		table.sort(out)
+		return out
 	end
-	f:close()
-	os.remove(pending_path)
-	table.sort(out)
-	return out
-end
+
+	function xp_import.remove_pending(paths)
+		if type(paths) ~= "table" or #paths == 0 then
+			return
+		end
+		local remove = {}
+		for _, p in ipairs(paths) do
+			if type(p) == "string" and p ~= "" then
+				remove[p] = true
+			end
+		end
+		if not next(remove) then
+			return
+		end
+
+		local pending_path = xp_import.get_pending_file()
+		local f = io.open(pending_path, "r")
+		if not f then
+			return
+		end
+		local kept = {}
+		for line in f:lines() do
+			line = trim(line)
+			if line ~= "" and not remove[line] then
+				kept[#kept + 1] = line
+			end
+		end
+		f:close()
+
+		if #kept == 0 then
+			os.remove(pending_path)
+			return
+		end
+
+		local wf = io.open(pending_path, "w")
+		if not wf then
+			return
+		end
+		for _, line in ipairs(kept) do
+			wf:write(line)
+			wf:write("\n")
+		end
+		wf:close()
+	end
 
 function xp_import.list_xp_files()
 	local dir = xp_import.get_import_dir()

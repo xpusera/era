@@ -93,8 +93,9 @@ public class MainActivity extends AppCompatActivity {
 		setContentView(R.layout.activity_main);
 
 		try {
-			if (Utils.importXpFromIntent(this, getIntent()))
-				Toast.makeText(this, "Imported .xp package", Toast.LENGTH_SHORT).show();
+			int imported = Utils.importXpFromIntent(this, getIntent());
+			if (imported > 0)
+				Toast.makeText(this, "Imported " + imported + " .xp package(s)", Toast.LENGTH_SHORT).show();
 		} catch (Exception ignored) {
 		}
 
@@ -120,8 +121,9 @@ public class MainActivity extends AppCompatActivity {
 		super.onNewIntent(intent);
 		setIntent(intent);
 		try {
-			if (Utils.importXpFromIntent(this, intent))
-				Toast.makeText(this, "Imported .xp package", Toast.LENGTH_SHORT).show();
+			int imported = Utils.importXpFromIntent(this, intent);
+			if (imported > 0)
+				Toast.makeText(this, "Imported " + imported + " .xp package(s)", Toast.LENGTH_SHORT).show();
 		} catch (Exception ignored) {
 		}
 	}

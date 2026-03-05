@@ -63,7 +63,7 @@ local function get_formspec(data)
 		"button[0,0;", w, ",0.8;title;", fgettext("Import .xp Packages"), "]",
 
 		"textarea[0.4,1.0;", (w - 0.8), ",1.2;;;",
-		core.formspec_escape(fgettext("Put .xp files into:\n$1", import_dir)),
+		core.formspec_escape(fgettext("Open/share a .xp to Minetek, or put .xp files into:\n$1", import_dir)),
 		"]",
 
 		"tablecolumns[text]",
@@ -117,7 +117,10 @@ local function handle_submit(this, fields)
 			data.message = fgettext("No .xp file selected")
 			return true
 		end
-		install_one(path)
+		if install_one(path) then
+			xp_import.remove_pending({ path })
+			data.pending = xp_import.get_pending()
+		end
 		return true
 	end
 
@@ -128,28 +131,40 @@ local function handle_submit(this, fields)
 			return true
 		end
 		local ok = 0
+		local installed_paths = {}
 		for _, path in ipairs(files) do
 			if install_one(path) then
 				ok = ok + 1
+				installed_paths[#installed_paths + 1] = path
 			end
+		end
+		if #installed_paths > 0 then
+			xp_import.remove_pending(installed_paths)
+			data.pending = xp_import.get_pending()
 		end
 		data.message = fgettext("Installed $1 package(s)", tostring(ok))
 		return true
 	end
 
 	if fields.install_pending then
-		local pending = data.pending or {}
+		local pending = xp_import.get_pending()
+		data.pending = pending
 		if #pending == 0 then
 			data.message = fgettext("No pending imports")
 			return true
 		end
 		local ok = 0
+		local installed_paths = {}
 		for _, path in ipairs(pending) do
 			if install_one(path) then
 				ok = ok + 1
+				installed_paths[#installed_paths + 1] = path
 			end
 		end
-		data.pending = {}
+		if #installed_paths > 0 then
+			xp_import.remove_pending(installed_paths)
+		end
+		data.pending = xp_import.get_pending()
 		data.message = fgettext("Installed $1 pending package(s)", tostring(ok))
 		return true
 	end
@@ -161,7 +176,6 @@ function create_xp_import_dialog(pending)
 	local dlg = dialog_create("xp_import_dialog", get_formspec, handle_submit, nil)
 	dlg.data.selected = 1
 	dlg.data.message = ""
-	dlg.data.pending = pending or {}
+	dlg.data.pending = pending or xp_import.get_pending()
 	return dlg
 end
-
