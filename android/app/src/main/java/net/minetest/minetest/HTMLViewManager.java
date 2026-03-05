@@ -80,7 +80,17 @@ public class HTMLViewManager {
 
 	public void htmlview_run(String id, String html) {
 		activity.runOnUiThread(() -> {
-			HtmlViewState st = getOrCreate(id);
+			HtmlViewState st = getOrCreate(id, true);
+			st.externalRootDir = null;
+			st.externalEntry = null;
+			String injected = injectBridge(html);
+			st.webView.loadDataWithBaseURL(st.baseUrl, injected, "text/html", "utf-8", null);
+		});
+	}
+
+	public void htmlview_run_worker(String id, String html) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = null;
 			st.externalEntry = null;
 			String injected = injectBridge(html);
@@ -90,7 +100,16 @@ public class HTMLViewManager {
 
 	public void htmlview_run_external(String id, String rootDir, String entry) {
 		activity.runOnUiThread(() -> {
-			HtmlViewState st = getOrCreate(id);
+			HtmlViewState st = getOrCreate(id, true);
+			st.externalRootDir = rootDir;
+			st.externalEntry = normalizeEntry(entry);
+			st.webView.loadUrl(st.baseUrl + st.externalEntry);
+		});
+	}
+
+	public void htmlview_run_external_worker(String id, String rootDir, String entry) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = rootDir;
 			st.externalEntry = normalizeEntry(entry);
 			st.webView.loadUrl(st.baseUrl + st.externalEntry);
@@ -103,7 +122,8 @@ public class HTMLViewManager {
 			if (st == null)
 				return;
 			try {
-				root.removeView(st.container);
+				if (st.attachedToRoot)
+					root.removeView(st.container);
 			} catch (Exception ignored) {
 			}
 			try {
@@ -114,12 +134,14 @@ public class HTMLViewManager {
 	}
 
 	public void htmlview_display(String id, int x, int y, int width, int height,
-								boolean visible, boolean fullscreen, boolean safe_area,
-								boolean drag_embed, float border_radius) {
+							boolean visible, boolean fullscreen, boolean safe_area,
+							boolean drag_embed, float border_radius) {
 		activity.runOnUiThread(() -> {
 			HtmlViewState st = views.get(id);
 			if (st == null)
 				return;
+			if (visible && !st.attachedToRoot)
+				attachToRoot(st);
 
 			st.container.setVisibility(visible ? View.VISIBLE : View.GONE);
 			if (!visible)
@@ -309,10 +331,24 @@ public class HTMLViewManager {
 		}
 	}
 
-	private HtmlViewState getOrCreate(String id) {
-		HtmlViewState existing = views.get(id);
-		if (existing != null)
-			return existing;
+	private void attachToRoot(HtmlViewState st) {
+		if (st.attachedToRoot)
+			return;
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(1, 1);
+		lp.gravity = Gravity.TOP | Gravity.START;
+		lp.leftMargin = 0;
+		lp.topMargin = 0;
+		root.addView(st.container, lp);
+		st.attachedToRoot = true;
+	}
+
+		private HtmlViewState getOrCreate(String id, boolean attachToRoot) {
+			HtmlViewState existing = views.get(id);
+			if (existing != null) {
+				if (attachToRoot)
+					attachToRoot(existing);
+				return existing;
+			}
 
 		String host = "luanti-" + shortHashHex(id) + ".local";
 		String baseUrl = "https://" + host + "/";
@@ -373,15 +409,13 @@ public class HTMLViewManager {
 		st.dragBar = dragBar;
 		setupDrag(st);
 
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(1, 1);
-		lp.gravity = Gravity.TOP | Gravity.START;
-		lp.leftMargin = 0;
-		lp.topMargin = 0;
-		root.addView(container, lp);
+			st.attachedToRoot = false;
+			if (attachToRoot)
+				attachToRoot(st);
 
-		views.put(id, st);
-		return st;
-	}
+			views.put(id, st);
+			return st;
+		}
 
 	private void setupDrag(HtmlViewState st) {
 		st.dragBar.setOnTouchListener((v, ev) -> {
@@ -694,6 +728,7 @@ public class HTMLViewManager {
 		final String baseUrl;
 		final FrameLayout container;
 		final WebView webView;
+		boolean attachedToRoot;
 
 		View dragBar;
 		boolean dragEnabled;

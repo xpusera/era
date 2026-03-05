@@ -1,6 +1,6 @@
 # Fork APIs
 
-This fork adds Android `htmlview` APIs and upgrades glTF animation support.
+This fork adds Android `htmlview` APIs (including headless workers), Android sensor access, `.xp` content packages, and upgrades glTF animation support.
 
 ## Android: `htmlview` (Lua)
 
@@ -14,6 +14,13 @@ Available only on Android builds. On non-Android platforms, calling these functi
 - `root_dir`: string (directory containing HTML files)
 - `entry`: string (default: `"index.html"`)
 - Notes: `root_dir` is sandbox-checked.
+
+`htmlview.run_worker(id, html)`
+- Like `htmlview.run`, but does not attach a visible view to the Android layout.
+- Intended for WASM-heavy computation tasks where no rendering is needed.
+
+`htmlview.run_external_worker(id, root_dir, entry?)`
+- Like `htmlview.run_external`, but headless (no view attachment).
 
 `htmlview.stop(id)`
 
@@ -159,3 +166,57 @@ Additive layers can be built on top of base animations using relative bone overr
 - If you need facial expressions/emotes today, emulate morphs via:
   - mesh swapping (`ObjectRef:set_properties({mesh=...})`)
   - bone scaling/rotation overrides on dedicated facial bones
+
+### Transparent gesture overlay template
+
+Use a fullscreen transparent `htmlview` instance and capture multi-touch gestures in JS.
+
+Recommended display settings:
+
+```lua
+htmlview.display(id, {
+  visible = true,
+  fullscreen = true,
+  safe_area = false,
+  drag_embed = false,
+  border_radius = 0,
+})
+```
+
+Example mod: `mods/htmlview_gestures` (provides `/gestures on|off`).
+
+## Android hardware sensors (Lua)
+
+`core.get_android_sensors()`
+
+Returns `nil` on non-Android builds, otherwise:
+
+```lua
+{
+  accelerometer = { available = boolean, x = number, y = number, z = number },
+  gyroscope     = { available = boolean, x = number, y = number, z = number },
+  light         = { available = boolean, lux = number },
+  time_us       = number,
+  mask          = number, -- 1=accel, 2=gyro, 4=light
+}
+```
+
+## `.xp` content packages
+
+`.xp` files are ZIP archives used for distributing content bundles.
+
+Archive structure:
+
+```
+mods/<mod_or_modpack_1>/...
+mods/<mod_or_modpack_2>/...
+games/<game_1>/...
+textures/<texture_pack_1>/...
+```
+
+Top-level folders are optional (`mods/`, `games/`, `textures/` / `texture/` / `texture_packs/`), but the archive must contain at least one.
+
+Install flow:
+- Copy `.xp` files into `<userpath>/imports/`.
+- Or on Android: open the `.xp` file with the app (it will be copied into `imports/` automatically).
+- In main menu: `Content` tab → `Import .xp`.
