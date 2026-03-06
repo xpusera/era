@@ -128,23 +128,15 @@ local function init_globals()
 
 	ui.set_default("maintab")
 	tv_main:show()
-	ui.update()
+		ui.update()
 
-	-- synchronous, chain parents to only show one at a time
-	local parent = tv_main
-	parent = migrate_keybindings(parent)
-	check_reinstall_mtg(parent)
+		-- synchronous, chain parents to only show one at a time
+		local parent = tv_main
+		parent = migrate_keybindings(parent)
+		parent = check_reinstall_mtg(parent)
 
 		-- asynchronous, will only be shown if we're still on "maintab"
 		check_new_version()
-
-		local pending = xp_import and xp_import.consume_pending and xp_import.consume_pending() or {}
-		if #pending > 0 then
-			local dlg = create_xp_import_dialog(pending)
-			dlg:set_parent(tv_main)
-			tv_main:hide()
-			dlg:show()
-		end
 	end
 
 assert(os.execute == nil)

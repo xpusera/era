@@ -76,8 +76,7 @@ local function get_formspec(tabview, name, tabdata)
 		pkgmgr.render_packagelist(packages, use_technical_names, update_icons),
 		";", tabdata.selected_pkg, "]",
 
-		"button[0.4,5.8;3.05,0.9;btn_contentdb;", contentdb_label, "]",
-		"button[3.65,5.8;3.05,0.9;btn_import_xp;", fgettext("Import .xp"), "]"
+		"button[0.4,5.8;3.05,0.9;btn_contentdb;", contentdb_label, "]"
 	}
 
 	local selected_pkg
@@ -222,15 +221,6 @@ local function handle_buttons(tabview, fields, tabname, tabdata)
 
 	if fields.btn_contentdb then
 		local dlg = create_contentdb_dlg()
-		dlg:set_parent(tabview)
-		tabview:hide()
-		dlg:show()
-		packages = nil
-		return true
-	end
-
-	if fields.btn_import_xp then
-		local dlg = create_xp_import_dialog()
 		dlg:set_parent(tabview)
 		tabview:hide()
 		dlg:show()
