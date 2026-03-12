@@ -12,6 +12,37 @@
 #include "client/client.h"
 #include "client/clientevent.h"
 
+#include <algorithm>
+
+namespace {
+	static CommonParticleParams::FacingMode parse_face_camera(const std::string &s)
+	{
+		if (s.empty() || s == "camera" || s == "rotate_xyz")
+			return CommonParticleParams::FacingMode::rotate_xyz;
+		if (s == "rotate_y")
+			return CommonParticleParams::FacingMode::rotate_y;
+		if (s == "velocity")
+			return CommonParticleParams::FacingMode::velocity;
+		if (s == "world")
+			return CommonParticleParams::FacingMode::world;
+		throw LuaError("Invalid face_camera mode: " + s);
+	}
+
+	template <typename T>
+	static void read_face_camera_field(lua_State *L, int tbl_index, T &p)
+	{
+		std::string face = getstringfield_default(L, tbl_index, "face_camera", "");
+		if (!face.empty()) {
+			p.face_camera = parse_face_camera(face);
+			p.vertical = (p.face_camera == CommonParticleParams::FacingMode::rotate_y);
+		} else if (p.vertical) {
+			p.face_camera = CommonParticleParams::FacingMode::rotate_y;
+		} else {
+			p.face_camera = CommonParticleParams::FacingMode::rotate_xyz;
+		}
+	}
+}
+
 int ModApiParticlesLocal::l_add_particle(lua_State *L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE);
@@ -57,6 +88,7 @@ int ModApiParticlesLocal::l_add_particle(lua_State *L)
 	p.object_collision = getboolfield_default(L, 1,
 		"object_collision", p.object_collision);
 	p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
+	read_face_camera_field(L, 1, p);
 
 	lua_getfield(L, 1, "animation");
 	p.animation = read_animation_definition(L, -1);
@@ -152,7 +184,32 @@ int ModApiParticlesLocal::l_add_particlespawner(lua_State *L)
 	lua_pop(L, 1);
 
 	p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
+	read_face_camera_field(L, 1, p);
 	p.glow = getintfield_default(L, 1, "glow", p.glow);
+
+	lua_getfield(L, 1, "color_over_lifetime");
+	if (lua_istable(L, -1)) {
+		size_t n = lua_objlen(L, -1);
+		p.color_over_lifetime.clear();
+		p.color_over_lifetime.reserve(n);
+		for (size_t i = 0; i < n; i++) {
+			lua_pushinteger(L, i + 1);
+			lua_gettable(L, -2);
+			luaL_checktype(L, -1, LUA_TTABLE);
+
+			ParticleSpawnerParameters::ColorOverLifetimeKeyframe k;
+			k.t = getfloatfield_default(L, -1, "t", 0.0f);
+			lua_getfield(L, -1, "color");
+			if (!read_color(L, -1, &k.color))
+				throw LuaError("color_over_lifetime entry missing/invalid 'color'");
+			lua_pop(L, 1);
+			p.color_over_lifetime.push_back(k);
+			lua_pop(L, 1);
+		}
+		std::sort(p.color_over_lifetime.begin(), p.color_over_lifetime.end(),
+				[](const auto &a, const auto &b) { return a.t < b.t; });
+	}
+	lua_pop(L, 1);
 
 	lua_getfield(L, 1, "texpool");
 	if (lua_istable(L, -1)) {

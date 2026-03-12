@@ -194,9 +194,11 @@ public:
 	void handleCommand_HudRemove(NetworkPacket* pkt);
 	void handleCommand_HudChange(NetworkPacket* pkt);
 	void handleCommand_HudSetFlags(NetworkPacket* pkt);
-	void handleCommand_HudSetParam(NetworkPacket* pkt);
-	void handleCommand_HudSetSky(NetworkPacket* pkt);
-	void handleCommand_HudSetSun(NetworkPacket* pkt);
+			void handleCommand_HudSetParam(NetworkPacket* pkt);
+			void handleCommand_HudSetSky(NetworkPacket* pkt);
+			void handleCommand_SetFog(NetworkPacket *pkt);
+			void handleCommand_SetSkyKeyframes(NetworkPacket *pkt);
+			void handleCommand_HudSetSun(NetworkPacket* pkt);
 	void handleCommand_HudSetMoon(NetworkPacket* pkt);
 	void handleCommand_HudSetStars(NetworkPacket* pkt);
 	void handleCommand_CloudParams(NetworkPacket* pkt);
@@ -212,8 +214,9 @@ public:
 	void handleCommand_PlayerSpeed(NetworkPacket *pkt);
 	void handleCommand_MediaPush(NetworkPacket *pkt);
 	void handleCommand_MinimapModes(NetworkPacket *pkt);
-	void handleCommand_SetLighting(NetworkPacket *pkt);
-	void handleCommand_Camera(NetworkPacket* pkt);
+		void handleCommand_SetLighting(NetworkPacket *pkt);
+		void handleCommand_Camera(NetworkPacket* pkt);
+		void handleCommand_CameraControl(NetworkPacket *pkt);
 
 	void ProcessData(NetworkPacket *pkt);
 

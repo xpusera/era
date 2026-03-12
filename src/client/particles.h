@@ -105,6 +105,7 @@ private:
 	float m_expiration;
 
 	// Color without lighting
+	video::SColor m_initial_color;
 	video::SColor m_base_color;
 
 	ClientParticleTexRef m_texture;
@@ -134,6 +135,9 @@ public:
 		ParticleManager *p_manager);
 
 	void step(float dtime, ClientEnvironment *env);
+
+	bool hasColorOverLifetime() const { return !p.color_over_lifetime.empty(); }
+	video::SColor sampleColorOverLifetime(float t) const;
 
 	bool getExpired() const
 	{ return p.amount <= 0 && p.time != 0; }

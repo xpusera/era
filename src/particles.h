@@ -265,6 +265,14 @@ struct CommonParticleParams
 	bool collision_removal = false;
 	bool object_collision = false;
 	bool vertical = false;
+	// Billboard facing mode. Default replicates historic behavior (face camera).
+	enum class FacingMode : u8 {
+		rotate_xyz = 0,
+		rotate_y = 1,
+		velocity = 2,
+		world = 3,
+	};
+	FacingMode face_camera = FacingMode::rotate_xyz;
 	ServerParticleTexture texture;
 	struct TileAnimationParams animation;
 	u8 glow = 0;
@@ -283,6 +291,7 @@ struct CommonParticleParams
 		to.collision_removal = collision_removal;
 		to.object_collision = object_collision;
 		to.vertical = vertical;
+		to.face_camera = face_camera;
 		to.texture = texture;
 		to.animation = animation;
 		to.glow = glow;
@@ -327,6 +336,15 @@ struct ParticleSpawnerParameters : CommonParticleParams
 		size   {1.0f},
 		attract{0.0f},
 		bounce {0.0f};
+
+	// Fork extensions
+	std::string attached_bone;
+	v3f attached_offset = v3f();
+	struct ColorOverLifetimeKeyframe {
+		f32 t = 0.0f; // normalized age [0..1]
+		video::SColor color = video::SColor(255, 255, 255, 255);
+	};
+	std::vector<ColorOverLifetimeKeyframe> color_over_lifetime;
 
 	// For historical reasons no (de-)serialization methods here
 };

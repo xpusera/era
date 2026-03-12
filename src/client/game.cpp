@@ -4,6 +4,7 @@
 
 #include "game_internal.h"
 
+#include <algorithm>
 #include <cmath>
 #include <csignal>
 #include "client/gameui.h"
@@ -16,6 +17,7 @@
 #include "clientmap.h"
 #include "clientmedia.h" // For clientMediaUpdateCacheCopy
 #include "config.h"
+#include "fogparams.h"
 
 #ifdef __ANDROID__
 #include "htmlview_jni.h"
@@ -2074,11 +2076,25 @@ void Game::updatePlayerControl(const CameraOrientation &cam)
 	 * touch then its meaning is inverted (i.e. holding aux1 means walk and
 	 * not fast)
 	 */
-	if (g_touchcontrols && m_touch_simulate_aux1) {
-		control.aux1 = control.aux1 ^ true;
-	}
+		if (g_touchcontrols && m_touch_simulate_aux1) {
+			control.aux1 = control.aux1 ^ true;
+		}
 
-	client->setPlayerControl(control);
+		if (camera->isServerInputLocked()) {
+			control.direction_keys = 0;
+			control.movement_speed = 0.0f;
+			control.movement_direction = 0.0f;
+			control.jump = false;
+			control.aux1 = false;
+			control.sneak = false;
+			control.zoom = false;
+			control.dig = false;
+			control.place = false;
+			control.pitch = player->getPitch();
+			control.yaw = player->getYaw();
+		}
+
+		client->setPlayerControl(control);
 
 	//tt.stop();
 }
@@ -2167,14 +2183,17 @@ const ClientEventHandler Game::clientEventHandler[CLIENTEVENT_MAX] = {
 	{&Game::handleClientEvent_HandleParticleEvent},
 	{&Game::handleClientEvent_HudAdd},
 	{&Game::handleClientEvent_HudRemove},
-	{&Game::handleClientEvent_HudChange},
-	{&Game::handleClientEvent_SetSky},
-	{&Game::handleClientEvent_SetSun},
-	{&Game::handleClientEvent_SetMoon},
+		{&Game::handleClientEvent_HudChange},
+		{&Game::handleClientEvent_SetSky},
+		{&Game::handleClientEvent_SetFog},
+		{&Game::handleClientEvent_SetSkyKeyframes},
+		{&Game::handleClientEvent_SetSun},
+		{&Game::handleClientEvent_SetMoon},
 	{&Game::handleClientEvent_SetStars},
 	{&Game::handleClientEvent_OverrideDayNightRatio},
 	{&Game::handleClientEvent_CloudParams},
 	{&Game::handleClientEvent_UpdateCamera},
+	{&Game::handleClientEvent_CameraFade},
 };
 
 void Game::handleClientEvent_None(ClientEvent *event, CameraOrientation *cam)
@@ -2437,6 +2456,32 @@ void Game::handleClientEvent_SetSky(ClientEvent *event, CameraOrientation *cam)
 	delete event->set_sky;
 }
 
+void Game::handleClientEvent_SetFog(ClientEvent *event, CameraOrientation *cam)
+{
+	const FogControlParams *p = event->set_fog;
+	if (p->enabled) {
+		sky->setFogOverride(p->base.color,
+			rangelim(p->base.fog_start, 0.0f, 1.0f),
+			rangelim(p->base.fog_end, 0.0f, 1.0f),
+			std::max(0.0f, p->blend_time));
+	} else {
+		sky->clearFogOverride(std::max(0.0f, p->blend_time));
+	}
+
+	delete event->set_fog;
+}
+
+void Game::handleClientEvent_SetSkyKeyframes(ClientEvent *event, CameraOrientation *cam)
+{
+	const SkyKeyframesParams *p = event->set_sky_keyframes;
+	if (p->enabled)
+		sky->setSkyKeyframes(*p);
+	else
+		sky->clearSkyKeyframes();
+
+	delete event->set_sky_keyframes;
+}
+
 void Game::handleClientEvent_SetSun(ClientEvent *event, CameraOrientation *cam)
 {
 	sky->setSunVisible(event->sun_params->visible);
@@ -2492,6 +2537,31 @@ void Game::handleClientEvent_UpdateCamera(ClientEvent *event, CameraOrientation 
 	// no parameters to update here, this just makes sure the camera is in the
 	// state it should be after something was changed.
 	updateCameraMode();
+}
+
+void Game::handleClientEvent_CameraFade(ClientEvent *event, CameraOrientation *cam)
+{
+	(void)cam;
+	m_camera_fade.active = true;
+	m_camera_fade.t = 0.0f;
+	m_camera_fade.fade_in = std::max(event->camera_fade.fade_in, 0.0f);
+	m_camera_fade.hold = std::max(event->camera_fade.hold, 0.0f);
+	m_camera_fade.fade_out = std::max(event->camera_fade.fade_out, 0.0f);
+	m_camera_fade.color = video::SColor(event->camera_fade.argb);
+}
+
+void Game::updateCameraFade(f32 dtime)
+{
+	if (!m_camera_fade.active)
+		return;
+	m_camera_fade.t += dtime;
+	const f32 total = m_camera_fade.fade_in + m_camera_fade.hold + m_camera_fade.fade_out;
+	if (total <= 0.0f) {
+		m_camera_fade.active = false;
+		return;
+	}
+	if (m_camera_fade.t >= total)
+		m_camera_fade.active = false;
 }
 
 void Game::processClientEvents(CameraOrientation *cam)
@@ -3446,6 +3516,7 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 	sky->update(time_of_day_smooth, time_brightness, direct_brightness,
 			sunlight_seen, camera->getCameraMode(), player->getYaw(),
 			player->getPitch());
+	sky->stepFog(dtime);
 
 	/*
 		Update clouds
@@ -3539,9 +3610,10 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 
 	// Damage flash is drawn in drawScene, but the timing update is done here to
 	// keep dtime out of the drawing code.
-	if (runData.damage_flash > 0.0f) {
-		runData.damage_flash -= 384.0f * dtime;
-	}
+		if (runData.damage_flash > 0.0f) {
+			runData.damage_flash -= 384.0f * dtime;
+		}
+		updateCameraFade(dtime);
 
 	g_profiler->avg("Game::updateFrame(): update frame [ms]", tt_update.stop(true));
 }
@@ -3557,8 +3629,10 @@ void Game::updateClouds(float dtime)
 		camera_node_position.X   = camera_node_position.X + camera_offset.X * BS;
 		camera_node_position.Y   = camera_node_position.Y + camera_offset.Y * BS;
 		camera_node_position.Z   = camera_node_position.Z + camera_offset.Z * BS;
-		this->clouds->update(camera_node_position, this->sky->getCloudColor());
-		if (this->clouds->isCameraInsideCloud() && this->fogEnabled()) {
+			this->clouds->update(camera_node_position, this->sky->getCloudColor());
+			if (this->sky->hasSkyKeyframes())
+				this->clouds->setColorAmbient(this->sky->getSkyKeyframeAmbientColor());
+			if (this->clouds->isCameraInsideCloud() && this->fogEnabled()) {
 			// If camera is inside cloud and fog is enabled, use cloud's colors as sky colors.
 			video::SColor clouds_dark = this->clouds->getColor().getInterpolated(
 					video::SColor(255, 0, 0, 0), 0.9);
@@ -3626,7 +3700,7 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 				fog_color,
 				video::EFT_FOG_LINEAR,
 				this->runData.fog_range * this->sky->getFogStart(),
-				this->runData.fog_range * 1.0f,
+				this->runData.fog_range * this->sky->getFogEnd(),
 				0.f, // unused
 				false, // pixel fog
 				true // range fog
@@ -3677,12 +3751,41 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	/*
 		Damage flash
 	*/
-	if (this->runData.damage_flash > 0.0f) {
-		video::SColor color(this->runData.damage_flash, 180, 0, 0);
-		this->driver->draw2DRectangle(color,
+		if (this->runData.damage_flash > 0.0f) {
+			video::SColor color(this->runData.damage_flash, 180, 0, 0);
+			this->driver->draw2DRectangle(color,
+						core::rect<s32>(0, 0, screensize.X, screensize.Y),
+						NULL);
+		}
+
+		if (m_camera_fade.active) {
+			f32 a = 0.0f;
+			const f32 t = m_camera_fade.t;
+			const f32 t_in_end = m_camera_fade.fade_in;
+			const f32 t_hold_end = m_camera_fade.fade_in + m_camera_fade.hold;
+			const f32 t_out_end = m_camera_fade.fade_in + m_camera_fade.hold + m_camera_fade.fade_out;
+			if (t < t_in_end) {
+				a = (m_camera_fade.fade_in > 0.0f) ? (t / m_camera_fade.fade_in) : 1.0f;
+			} else if (t < t_hold_end) {
+				a = 1.0f;
+			} else if (t < t_out_end) {
+				f32 u = t - t_hold_end;
+				a = (m_camera_fade.fade_out > 0.0f) ? (1.0f - (u / m_camera_fade.fade_out)) : 0.0f;
+			} else {
+				a = 0.0f;
+			}
+			a = core::clamp(a, 0.0f, 1.0f);
+			u32 alpha = (u32)std::round(a * 255.0f);
+			u32 base_a = m_camera_fade.color.getAlpha();
+			alpha = (alpha * base_a) / 255;
+			video::SColor color(alpha,
+					m_camera_fade.color.getRed(),
+					m_camera_fade.color.getGreen(),
+					m_camera_fade.color.getBlue());
+			this->driver->draw2DRectangle(color,
 					core::rect<s32>(0, 0, screensize.X, screensize.Y),
 					NULL);
-	}
+		}
 
 	this->driver->endScene();
 

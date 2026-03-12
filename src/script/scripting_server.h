@@ -16,6 +16,7 @@
 #include "cpp_api/s_async.h"
 
 struct PackedValue;
+struct ParticleParameters;
 
 /*****************************************************************************/
 /* Scripting <-> Server Game Interface                                       */
@@ -36,6 +37,10 @@ class ServerScripting:
 {
 public:
 	ServerScripting(Server* server);
+
+	void unrefParticleSpawnCallback(int ref);
+	bool runParticleSpawnCallback(int ref, u32 index, ParticleParameters &pp,
+			const std::string &origin_mod);
 
 	void loadBuiltin();
 	// use ScriptApiBase::loadMod() to load mods

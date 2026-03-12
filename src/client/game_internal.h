@@ -269,14 +269,18 @@ private:
 	void handleClientEvent_HudAdd(ClientEvent *event, CameraOrientation *cam);
 	void handleClientEvent_HudRemove(ClientEvent *event, CameraOrientation *cam);
 	void handleClientEvent_HudChange(ClientEvent *event, CameraOrientation *cam);
-	void handleClientEvent_SetSky(ClientEvent *event, CameraOrientation *cam);
-	void handleClientEvent_SetSun(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_SetSky(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_SetFog(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_SetSkyKeyframes(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_SetSun(ClientEvent *event, CameraOrientation *cam);
 	void handleClientEvent_SetMoon(ClientEvent *event, CameraOrientation *cam);
 	void handleClientEvent_SetStars(ClientEvent *event, CameraOrientation *cam);
 	void handleClientEvent_OverrideDayNightRatio(ClientEvent *event,
 		CameraOrientation *cam);
-	void handleClientEvent_CloudParams(ClientEvent *event, CameraOrientation *cam);
-	void handleClientEvent_UpdateCamera(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_CloudParams(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_UpdateCamera(ClientEvent *event, CameraOrientation *cam);
+		void handleClientEvent_CameraFade(ClientEvent *event, CameraOrientation *cam);
+		void updateCameraFade(f32 dtime);
 
 	void updateChat(f32 dtime);
 
@@ -325,8 +329,16 @@ private:
 	// Map server hud ids to client hud ids
 	std::unordered_map<u32, u32> m_hud_server_to_client;
 
-	GameRunData runData;
-	Flags m_flags;
+		GameRunData runData;
+		struct {
+			bool active = false;
+			video::SColor color = video::SColor(255, 0, 0, 0);
+			f32 fade_in = 0.0f;
+			f32 hold = 0.0f;
+			f32 fade_out = 0.0f;
+			f32 t = 0.0f;
+		} m_camera_fade;
+		Flags m_flags;
 
 	/* 'cache'
 	   This class does take ownership/responsibily for cleaning up etc of any of

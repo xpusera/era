@@ -20,6 +20,7 @@
 #include <IVideoDriver.h>
 #include <S3DVertex.h>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace core;
@@ -85,6 +86,251 @@ Sky::Sky(s32 id, RenderingEngine *rendering_engine, ITextureSource *tsrc, IShade
 	m_sky_params.fog_start = rangelim(g_settings->getFloat("fog_start"), 0.0f, 0.99f);
 
 	setStarCount(1000);
+}
+
+float Sky::getFogStart() const
+{
+	if (m_fog_blend_active || m_fog_override_enabled)
+		return m_fog_override_current.fog_start;
+	return m_sky_params.fog_start;
+}
+
+float Sky::getFogEnd() const
+{
+	if (m_fog_blend_active || m_fog_override_enabled)
+		return m_fog_override_current.fog_end;
+	return 1.0f;
+}
+
+video::SColor Sky::getFogColor() const
+{
+	if (m_in_clouds)
+		return getBgColor();
+	if (m_fog_blend_active || m_fog_override_enabled)
+		return m_fog_override_current.color;
+	if (m_sky_keyframes_enabled)
+		return m_sky_keyframes_fog_color;
+	if (m_sky_params.fog_color.getAlpha() > 0)
+		return m_sky_params.fog_color;
+	return getBgColor();
+}
+
+static inline float wrap01(float t)
+{
+	t = std::fmod(t, 1.0f);
+	if (t < 0.0f)
+		t += 1.0f;
+	return t;
+}
+
+static inline float clamp01(float t)
+{
+	return rangelim(t, 0.0f, 1.0f);
+}
+
+static video::SColor lerpColor(video::SColor a, video::SColor b, float f)
+{
+	f = clamp01(f);
+	auto lerp8 = [&](u8 av, u8 bv) -> u8 {
+		return static_cast<u8>(std::lround(av + (bv - av) * f));
+	};
+	return video::SColor(
+			lerp8(a.getAlpha(), b.getAlpha()),
+			lerp8(a.getRed(), b.getRed()),
+			lerp8(a.getGreen(), b.getGreen()),
+			lerp8(a.getBlue(), b.getBlue()));
+}
+
+static float catmullRom(float p0, float p1, float p2, float p3, float t)
+{
+	float t2 = t * t;
+	float t3 = t2 * t;
+	return 0.5f * ((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+			(-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+}
+
+static video::SColor catmullRomColor(video::SColor p0, video::SColor p1, video::SColor p2, video::SColor p3, float t)
+{
+	auto cr8 = [&](u8 a, u8 b, u8 c, u8 d) -> u8 {
+		float v = catmullRom(a, b, c, d, clamp01(t));
+		v = rangelim(v, 0.0f, 255.0f);
+		return static_cast<u8>(std::lround(v));
+	};
+	return video::SColor(
+			cr8(p0.getAlpha(), p1.getAlpha(), p2.getAlpha(), p3.getAlpha()),
+			cr8(p0.getRed(), p1.getRed(), p2.getRed(), p3.getRed()),
+			cr8(p0.getGreen(), p1.getGreen(), p2.getGreen(), p3.getGreen()),
+			cr8(p0.getBlue(), p1.getBlue(), p2.getBlue(), p3.getBlue()));
+}
+
+static SkyKeyframe sampleKeyframes(const SkyKeyframesParams &params, float time_of_day)
+{
+	SkyKeyframe out;
+	if (params.keyframes.empty())
+		return out;
+
+	float t = wrap01(time_of_day);
+	auto &kfs = params.keyframes;
+	if (kfs.size() == 1)
+		return kfs.front();
+
+	// Find segment [i1, i2] with wrap-around
+	int i2 = -1;
+	for (size_t i = 0; i < kfs.size(); i++) {
+		if (t <= kfs[i].time) {
+			i2 = static_cast<int>(i);
+			break;
+		}
+	}
+	int i1;
+	float t_adj = t;
+	if (i2 == -1) {
+		i1 = static_cast<int>(kfs.size() - 1);
+		i2 = 0;
+		// wrap to next day
+		t_adj = t + 1.0f;
+	} else if (i2 == 0) {
+		i1 = static_cast<int>(kfs.size() - 1);
+		t_adj = t + 1.0f;
+	} else {
+		i1 = i2 - 1;
+	}
+
+	float t1 = kfs[i1].time;
+	float t2 = kfs[i2].time;
+	if (i2 <= i1)
+		t2 += 1.0f;
+	if (t1 > t_adj)
+		t1 -= 1.0f;
+
+	float denom = (t2 - t1);
+	float f = denom > 0.0f ? (t_adj - t1) / denom : 0.0f;
+
+	if (params.interpolation == SkyKeyframeInterpolation::Linear) {
+		out.time = t;
+		out.sky = lerpColor(kfs[i1].sky, kfs[i2].sky, f);
+		out.fog = lerpColor(kfs[i1].fog, kfs[i2].fog, f);
+		out.ambient = lerpColor(kfs[i1].ambient, kfs[i2].ambient, f);
+		return out;
+	}
+
+	int i0 = (i1 - 1);
+	if (i0 < 0)
+		i0 = static_cast<int>(kfs.size() - 1);
+	int i3 = (i2 + 1) % static_cast<int>(kfs.size());
+
+	out.time = t;
+	out.sky = catmullRomColor(kfs[i0].sky, kfs[i1].sky, kfs[i2].sky, kfs[i3].sky, f);
+	out.fog = catmullRomColor(kfs[i0].fog, kfs[i1].fog, kfs[i2].fog, kfs[i3].fog, f);
+	out.ambient = catmullRomColor(kfs[i0].ambient, kfs[i1].ambient, kfs[i2].ambient, kfs[i3].ambient, f);
+	return out;
+}
+
+void Sky::setSkyKeyframes(const SkyKeyframesParams &params)
+{
+	m_sky_keyframes = params;
+	// sanitize
+	for (auto &k : m_sky_keyframes.keyframes)
+		k.time = clamp01(k.time);
+	std::sort(m_sky_keyframes.keyframes.begin(), m_sky_keyframes.keyframes.end(),
+			[](const auto &a, const auto &b) { return a.time < b.time; });
+	m_sky_keyframes_enabled = true;
+}
+
+void Sky::clearSkyKeyframes()
+{
+	m_sky_keyframes_enabled = false;
+	m_sky_keyframes.keyframes.clear();
+}
+
+static FogVariantParams fog_lerp(const FogVariantParams &a, const FogVariantParams &b, float f)
+{
+	FogVariantParams out;
+	out.fog_start = a.fog_start + (b.fog_start - a.fog_start) * f;
+	out.fog_end = a.fog_end + (b.fog_end - a.fog_end) * f;
+	auto lerp8 = [&](u8 av, u8 bv) -> u8 {
+		return static_cast<u8>(std::lround(av + (bv - av) * f));
+	};
+	out.color = video::SColor(
+			lerp8(a.color.getAlpha(), b.color.getAlpha()),
+			lerp8(a.color.getRed(), b.color.getRed()),
+			lerp8(a.color.getGreen(), b.color.getGreen()),
+			lerp8(a.color.getBlue(), b.color.getBlue()));
+	return out;
+}
+
+void Sky::setFogOverride(video::SColor color, float fog_start, float fog_end, float blend_time)
+{
+	FogVariantParams base;
+	base.color = (m_sky_params.fog_color.getAlpha() > 0) ? m_sky_params.fog_color : getBgColor();
+	base.fog_start = m_sky_params.fog_start;
+	base.fog_end = 1.0f;
+
+	FogVariantParams from = (m_fog_blend_active || m_fog_override_enabled) ? m_fog_override_current : base;
+	FogVariantParams to;
+	to.color = color;
+	to.fog_start = rangelim(fog_start, 0.0f, 1.0f);
+	to.fog_end = rangelim(fog_end, 0.0f, 1.0f);
+	if (to.fog_end < to.fog_start)
+		to.fog_end = to.fog_start;
+
+	blend_time = std::max(0.0f, blend_time);
+	if (blend_time == 0.0f) {
+		m_fog_override_enabled = true;
+		m_fog_blend_active = false;
+		m_fog_override_current = to;
+		return;
+	}
+
+	m_fog_override_enabled = true;
+	m_fog_blend_active = true;
+	m_fog_blend_from = from;
+	m_fog_blend_to = to;
+	m_fog_override_current = from;
+	m_fog_blend_total = blend_time;
+	m_fog_blend_elapsed = 0.0f;
+}
+
+void Sky::clearFogOverride(float blend_time)
+{
+	FogVariantParams base;
+	base.color = (m_sky_params.fog_color.getAlpha() > 0) ? m_sky_params.fog_color : getBgColor();
+	base.fog_start = m_sky_params.fog_start;
+	base.fog_end = 1.0f;
+
+	FogVariantParams from = (m_fog_blend_active || m_fog_override_enabled) ? m_fog_override_current : base;
+	FogVariantParams to = base;
+
+	blend_time = std::max(0.0f, blend_time);
+	if (blend_time == 0.0f) {
+		m_fog_override_enabled = false;
+		m_fog_blend_active = false;
+		return;
+	}
+
+	m_fog_override_enabled = false;
+	m_fog_blend_active = true;
+	m_fog_blend_from = from;
+	m_fog_blend_to = to;
+	m_fog_override_current = from;
+	m_fog_blend_total = blend_time;
+	m_fog_blend_elapsed = 0.0f;
+}
+
+void Sky::stepFog(float dtime)
+{
+	if (!m_fog_blend_active)
+		return;
+
+	m_fog_blend_elapsed += dtime;
+	float f = m_fog_blend_total > 0.0f ? (m_fog_blend_elapsed / m_fog_blend_total) : 1.0f;
+	f = rangelim(f, 0.0f, 1.0f);
+	m_fog_override_current = fog_lerp(m_fog_blend_from, m_fog_blend_to, f);
+
+	if (m_fog_blend_elapsed >= m_fog_blend_total) {
+		m_fog_blend_active = false;
+		m_fog_override_current = m_fog_blend_to;
+	}
 }
 
 void Sky::OnRegisterSceneNode()
@@ -521,6 +767,15 @@ void Sky::update(float time_of_day, float time_brightness,
 	if (m_directional_colored_fog) {
 		m_cloudcolor_f = m_mix_scolorf(m_cloudcolor_f,
 			video::SColorf(pointcolor), m_horizon_blend() * 0.25);
+	}
+
+	if (m_sky_keyframes_enabled && !m_sky_keyframes.keyframes.empty()) {
+		SkyKeyframe k = sampleKeyframes(m_sky_keyframes, m_time_of_day);
+		m_sky_keyframes_sky_color = k.sky;
+		m_sky_keyframes_fog_color = k.fog;
+		m_sky_keyframes_ambient_color = k.ambient;
+		m_skycolor = m_sky_keyframes_sky_color;
+		m_bgcolor = m_sky_keyframes_fog_color;
 	}
 }
 

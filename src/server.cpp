@@ -20,6 +20,8 @@
 #include "mapblock.h"
 #include "nodedef.h"
 #include "particles.h"
+#include "fogparams.h"
+#include "skykeyframesparams.h"
 #include "profiler.h"
 #include "remoteplayer.h"
 #include "server/ban.h"
@@ -37,6 +39,8 @@
 #include "util/hex.h"
 #include "util/serialize.h"
 #include "util/string.h"
+
+#include <iterator>
 #include "util/thread.h"
 #include "util/tracy_wrapper.h"
 #include "version.h"
@@ -841,6 +845,7 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 	// Send queued particles
 	{
 		EnvAutoLock envlock(this);
+		stepScriptedParticleSpawners(dtime);
 		SendSpawnParticles();
 	}
 
@@ -1838,13 +1843,22 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
 		}
 		p.radius.serialize(os);
 
-		ParticleParamTypes::serializeParameterValue(os, (u16)p.texpool.size());
-		for (const auto& tex : p.texpool) {
-			tex.serialize(os, protocol_version);
-		}
+			ParticleParamTypes::serializeParameterValue(os, (u16)p.texpool.size());
+			for (const auto& tex : p.texpool) {
+				tex.serialize(os, protocol_version);
+			}
 
-		pkt.putRawString(os.str());
-	}
+			ParticleParamTypes::serializeParameterValue(os, p.face_camera);
+			os << serializeString16(p.attached_bone);
+			writeV3F32(os, p.attached_offset);
+			ParticleParamTypes::serializeParameterValue(os, (u16)p.color_over_lifetime.size());
+			for (const auto &k : p.color_over_lifetime) {
+				writeF32(os, k.t);
+				writeU32(os, k.color.color);
+			}
+
+			pkt.putRawString(os.str());
+		}
 
 	Send(&pkt);
 }
@@ -1962,6 +1976,46 @@ void Server::SendSetSky(session_t peer_id, const SkyboxParams &params)
 	Send(&pkt);
 }
 
+void Server::SendSetFog(session_t peer_id, const FogControlParams &params)
+{
+	NetworkPacket pkt(TOCLIENT_SET_FOG, 0, peer_id);
+
+	pkt << static_cast<u8>(params.enabled ? 1 : 0);
+	if (params.enabled) {
+		pkt << params.base.color.color
+			<< params.base.fog_start
+			<< params.base.fog_end
+			<< params.blend_time
+			<< static_cast<u8>(params.has_weather ? 1 : 0);
+		if (params.has_weather) {
+			pkt << params.weather.color.color
+				<< params.weather.fog_start
+				<< params.weather.fog_end;
+		}
+	}
+
+	Send(&pkt);
+}
+
+void Server::SendSetSkyKeyframes(session_t peer_id, const SkyKeyframesParams &params)
+{
+	NetworkPacket pkt(TOCLIENT_SET_SKY_KEYFRAMES, 0, peer_id);
+
+	pkt << static_cast<u8>(params.enabled ? 1 : 0);
+	if (params.enabled) {
+		pkt << static_cast<u8>(params.interpolation == SkyKeyframeInterpolation::Cubic ? 1 : 0);
+		pkt << static_cast<u16>(params.keyframes.size());
+		for (const auto &k : params.keyframes) {
+			pkt << k.time
+				<< k.sky.color
+				<< k.fog.color
+				<< k.ambient.color;
+		}
+	}
+
+	Send(&pkt);
+}
+
 void Server::SendSetSun(session_t peer_id, const SunParams &params)
 {
 	NetworkPacket pkt(TOCLIENT_SET_SUN, 0, peer_id);
@@ -2038,6 +2092,67 @@ void Server::SendCamera(session_t peer_id, Player *player)
 
 	pkt << static_cast<u8>(player->allowed_camera_mode);
 
+	Send(&pkt);
+}
+
+void Server::SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_time,
+	u8 ease_type, bool lock_input)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1, peer_id);
+	const u8 type = 0;
+	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+	Send(&pkt);
+}
+
+void Server::SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
+	bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 1 + 12, peer_id);
+	const u8 type = 0;
+	const u8 preset = 3;
+	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+	pkt << pos << orient_type << orient;
+	Send(&pkt);
+}
+
+void Server::SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
+	bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
+	f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1, peer_id);
+	const u8 type = 0;
+	const u8 preset = 4;
+	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+	pkt << target_type;
+	if (target_type == 0)
+		pkt << target_pos;
+	else
+		pkt << target_object_id;
+	pkt << radius << yaw_offset << pitch_offset << view_offset;
+	Send(&pkt);
+}
+
+void Server::SendCameraControlClear(session_t peer_id, f32 ease_time, u8 ease_type)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 4 + 1, peer_id);
+	const u8 type = 1;
+	pkt << type << ease_time << ease_type;
+	Send(&pkt);
+}
+
+void Server::SendCameraControlShake(session_t peer_id, f32 intensity, f32 duration, bool decay)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 4 + 4 + 1, peer_id);
+	const u8 type = 2;
+	pkt << type << intensity << duration << (u8)(decay ? 1 : 0);
+	Send(&pkt);
+}
+
+void Server::SendCameraControlFade(session_t peer_id, u32 argb, f32 fade_in, f32 hold, f32 fade_out)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 4 + 4 + 4 + 4, peer_id);
+	const u8 type = 3;
+	pkt << type << argb << fade_in << hold << fade_out;
 	Send(&pkt);
 }
 
@@ -3628,6 +3743,18 @@ void Server::setSky(RemotePlayer *player, const SkyboxParams &params)
 	SendSetSky(player->getPeerId(), params);
 }
 
+void Server::setFog(RemotePlayer *player, const FogControlParams &params)
+{
+	sanity_check(player);
+	SendSetFog(player->getPeerId(), params);
+}
+
+void Server::setSkyKeyframes(RemotePlayer *player, const SkyKeyframesParams &params)
+{
+	sanity_check(player);
+	SendSetSkyKeyframes(player->getPeerId(), params);
+}
+
 void Server::setSun(RemotePlayer *player, const SunParams &params)
 {
 	sanity_check(player);
@@ -3686,6 +3813,246 @@ void Server::spawnParticle(const std::string &playername,
 	m_particles_to_send[playername].push_back(p);
 }
 
+	bool Server::deleteScriptedParticleSpawner(u32 id)
+	{
+		auto it = m_scripted_particle_spawners.find(id);
+		if (it == m_scripted_particle_spawners.end())
+			return false;
+		if (m_script)
+			m_script->unrefParticleSpawnCallback(it->second.on_particle_spawn_ref);
+
+		m_scripted_particle_spawners.erase(it);
+		return true;
+	}
+
+bool Server::deleteScriptedParticleSpawnerForPlayer(u32 id, const std::string &playername)
+{
+	auto it = m_scripted_particle_spawners.find(id);
+	if (it == m_scripted_particle_spawners.end())
+		return false;
+
+	auto &sp = it->second;
+	if (!sp.to_player.empty()) {
+		if (sp.to_player == playername)
+			return deleteScriptedParticleSpawner(id);
+		return true;
+	}
+
+	sp.exclude_players.insert(playername);
+	return true;
+}
+
+void Server::stepScriptedParticleSpawners(float dtime)
+{
+	if (!m_env || !m_script || m_scripted_particle_spawners.empty())
+		return;
+
+	const float dt = std::max(0.0f, dtime);
+	const float dt_prob = std::min(dt, 1.0f);
+	constexpr u32 max_spawns_per_step = 256;
+
+	auto it = m_scripted_particle_spawners.begin();
+	while (it != m_scripted_particle_spawners.end()) {
+		u32 id = it->first;
+		auto &sp = it->second;
+		bool callback_failed = false;
+
+		if (sp.attached_id != 0) {
+			ServerActiveObject *attached = m_env->getActiveObject(sp.attached_id);
+			if (!attached || attached->isGone()) {
+				auto next = std::next(it);
+				deleteScriptedParticleSpawner(id);
+				it = next;
+				continue;
+			}
+		}
+
+		sp.elapsed += dt;
+		u32 spawned_this_step = 0;
+
+			auto spawn_one = [&]() -> bool {
+			if (spawned_this_step >= max_spawns_per_step)
+				return false;
+
+			float fac = 0.0f;
+			if (sp.p.time != 0.0f)
+				fac = sp.elapsed / (sp.p.time + 0.1f);
+
+			auto r_pos = sp.p.pos.blend(fac);
+			auto r_vel = sp.p.vel.blend(fac);
+			auto r_acc = sp.p.acc.blend(fac);
+			auto r_drag = sp.p.drag.blend(fac);
+			auto r_radius = sp.p.radius.blend(fac);
+			auto r_jitter = sp.p.jitter.blend(fac);
+			auto r_bounce = sp.p.bounce.blend(fac);
+			v3f attractor_origin = sp.p.attractor_origin.blend(fac);
+			v3f attractor_direction = sp.p.attractor_direction.blend(fac);
+			auto r_exp = sp.p.exptime.blend(fac);
+			auto r_size = sp.p.size.blend(fac);
+			auto r_attract = sp.p.attract.blend(fac);
+			auto attract = r_attract.pickWithin();
+
+			v3f pos = r_pos.pickWithin();
+			v3f sphere_radius = r_radius.pickWithin();
+			if (sp.attached_id != 0) {
+				if (ServerActiveObject *attached = m_env->getActiveObject(sp.attached_id)) {
+					pos += sp.p.attached_offset;
+					pos += attached->getBasePosition() / BS;
+				}
+			}
+
+			ParticleParameters pp;
+			pp.pos = pos;
+			pp.vel = r_vel.pickWithin();
+			pp.acc = r_acc.pickWithin();
+			pp.drag = r_drag.pickWithin();
+			pp.jitter = r_jitter;
+			pp.bounce = r_bounce;
+			pp.expirationtime = r_exp.pickWithin();
+
+			if (sphere_radius != v3f()) {
+				f32 l = sphere_radius.getLength();
+				v3f mag = sphere_radius;
+				mag.normalize();
+
+				v3f ofs = v3f(l, 0, 0);
+				ofs.rotateXZBy(myrand_range(0.f, 360.f));
+				ofs.rotateYZBy(myrand_range(0.f, 360.f));
+				ofs.rotateXYBy(myrand_range(0.f, 360.f));
+				pp.pos += ofs * mag;
+			}
+
+			if (sp.p.attractor_attachment) {
+				if (ServerActiveObject *aobj = m_env->getActiveObject(sp.p.attractor_attachment))
+					attractor_origin += aobj->getBasePosition() / BS;
+			}
+			if (sp.p.attractor_kind != ParticleParamTypes::AttractorKind::none && attract != 0) {
+				v3f dir;
+				f32 dist = 0;
+				switch (sp.p.attractor_kind) {
+					case ParticleParamTypes::AttractorKind::none:
+						break;
+					case ParticleParamTypes::AttractorKind::point: {
+						dist = pp.pos.getDistanceFrom(attractor_origin);
+						dir = pp.pos - attractor_origin;
+						dir.normalize();
+						break;
+					}
+					case ParticleParamTypes::AttractorKind::line: {
+						const auto &lorigin = attractor_origin;
+						v3f ldir = attractor_direction;
+						ldir.normalize();
+						auto origin_to_point = pp.pos - lorigin;
+						auto scalar_projection = origin_to_point.dotProduct(ldir);
+						auto point_on_line = lorigin + (ldir * scalar_projection);
+						dist = pp.pos.getDistanceFrom(point_on_line);
+						dir = (point_on_line - pp.pos);
+						dir.normalize();
+						dir *= -1;
+						break;
+					}
+					case ParticleParamTypes::AttractorKind::plane: {
+						const v3f &porigin = attractor_origin;
+						v3f normal = attractor_direction;
+						normal.normalize();
+						v3f point_to_origin = porigin - pp.pos;
+						f32 factor = normal.dotProduct(point_to_origin);
+						if (numericAbsolute(factor) == 0.0f) {
+							dir = normal;
+						} else {
+							factor = numericSign(factor);
+							dir = normal * factor;
+						}
+						dist = numericAbsolute(normal.dotProduct(pp.pos - porigin));
+						dir *= -1;
+						break;
+					}
+				}
+
+				f32 speedTowards = numericAbsolute(attract) * dist;
+				v3f avel = dir * speedTowards;
+				if (attract > 0 && speedTowards > 0) {
+					avel *= -1;
+					if (sp.p.attractor_kill) {
+						f32 timeToCenter = dist / speedTowards;
+						if (timeToCenter < pp.expirationtime)
+							pp.expirationtime = timeToCenter;
+					}
+				}
+				pp.vel += avel;
+			}
+
+			sp.p.copyCommon(pp);
+			if (!sp.p.texpool.empty()) {
+				auto &tex = sp.p.texpool[myrand_range(0, sp.p.texpool.size() - 1)];
+				pp.texture = tex;
+				if (tex.animated)
+					pp.animation = tex.animation;
+			}
+			if (sp.p.size.start.max > 0.0f || sp.p.size.end.max > 0.0f)
+				pp.size = r_size.pickWithin();
+
+			if (sp.on_particle_spawn_ref > 0) {
+				if (!m_script->runParticleSpawnCallback(sp.on_particle_spawn_ref,
+						sp.spawned, pp, sp.origin_mod)) {
+					callback_failed = true;
+					return false;
+				}
+			}
+
+			if (!sp.to_player.empty()) {
+				if (sp.exclude_players.find(sp.to_player) == sp.exclude_players.end())
+					spawnParticle(sp.to_player, pp);
+			} else if (!sp.exclude_players.empty()) {
+				for (auto *player : m_env->getPlayers()) {
+					if (!player)
+						continue;
+					const std::string &name = player->getName();
+					if (sp.exclude_players.find(name) != sp.exclude_players.end())
+						continue;
+					spawnParticle(name, pp);
+				}
+			} else {
+				spawnParticle("", pp);
+			}
+
+			sp.spawned++;
+			spawned_this_step++;
+			return true;
+		};
+
+		bool expired = false;
+		if (sp.p.time != 0.0f) {
+			while (sp.next_spawntime < sp.spawntimes.size() && sp.spawntimes[sp.next_spawntime] <= sp.elapsed && sp.p.amount > 0) {
+				if (!spawn_one())
+					break;
+				sp.p.amount--;
+				sp.next_spawntime++;
+			}
+			expired = (sp.p.amount == 0) || (sp.next_spawntime >= sp.spawntimes.size());
+		} else {
+			for (int i = 0; i <= sp.p.amount; i++) {
+				if (myrand_float() < dt_prob) {
+					if (!spawn_one())
+						break;
+				}
+			}
+		}
+
+		if (callback_failed)
+			expired = true;
+
+		if (expired) {
+			auto next = std::next(it);
+			deleteScriptedParticleSpawner(id);
+			it = next;
+			continue;
+		}
+
+		++it;
+	}
+}
+
 u32 Server::addParticleSpawner(const ParticleSpawnerParameters &p,
 	ServerActiveObject *attached, const std::string &to_player,
 	const std::string &exclude_player)
@@ -3705,10 +4072,58 @@ u32 Server::addParticleSpawner(const ParticleSpawnerParameters &p,
 	return id;
 }
 
+u32 Server::addScriptedParticleSpawner(const ParticleSpawnerParameters &p,
+	ServerActiveObject *attached, const std::string &to_player,
+	const std::string &exclude_player, int on_particle_spawn_ref,
+	const std::string &origin_mod)
+{
+	if (!m_env)
+		return 0;
+
+	ScriptedParticleSpawner sp;
+	sp.p = p;
+	sp.attached_id = attached ? attached->getId() : 0;
+	sp.to_player = to_player;
+	sp.on_particle_spawn_ref = on_particle_spawn_ref;
+	sp.origin_mod = origin_mod;
+	if (!exclude_player.empty())
+		sp.exclude_players.insert(exclude_player);
+
+	if (p.time != 0.0f && p.amount > 0) {
+		sp.spawntimes.reserve(p.amount);
+		for (u16 i = 0; i < p.amount; i++)
+			sp.spawntimes.push_back(myrand_float() * p.time);
+		std::sort(sp.spawntimes.begin(), sp.spawntimes.end());
+	}
+
+	u32 id = m_scripted_particle_spawner_id_last_used;
+	for (;;) {
+		id++;
+		if (id == 0)
+			id = 0x80000000u;
+		if ((id & 0x80000000u) == 0)
+			id |= 0x80000000u;
+		if (m_scripted_particle_spawners.find(id) == m_scripted_particle_spawners.end())
+			break;
+	}
+	m_scripted_particle_spawner_id_last_used = id;
+	m_scripted_particle_spawners.emplace(id, std::move(sp));
+	return id;
+}
+
 void Server::deleteParticleSpawner(const std::string &playername, u32 id)
 {
 	if (!m_env)
 		throw ServerError("Can't delete particle spawners during initialisation!");
+
+	if (m_scripted_particle_spawners.find(id) != m_scripted_particle_spawners.end()) {
+		if (playername.empty()) {
+			deleteScriptedParticleSpawner(id);
+		} else {
+			deleteScriptedParticleSpawnerForPlayer(id, playername);
+		}
+		return;
+	}
 
 	session_t peer_id = PEER_ID_INEXISTENT;
 	if (!playername.empty()) {

@@ -13,6 +13,9 @@
 #include "lua_api/l_auth.h"
 #include "lua_api/l_base.h"
 #include "lua_api/l_craft.h"
+#include "lua_api/l_camera_control.h"
+#include "lua_api/l_fog_control.h"
+#include "lua_api/l_sky_keyframes_control.h"
 #include "lua_api/l_env.h"
 #include "lua_api/l_inventory.h"
 #include "lua_api/l_item.h"
@@ -34,6 +37,9 @@
 #include "lua_api/l_storage.h"
 #include "lua_api/l_ipc.h"
 #include "lua_api/l_htmlview.h"
+
+#include "particles.h"
+#include "common/c_converter.h"
 
 extern "C" {
 #include <lualib.h>
@@ -153,8 +159,11 @@ void ServerScripting::InitializeModApi(lua_State *L, int top)
 	ModApiParticles::Initialize(L, top);
 	ModApiRollback::Initialize(L, top);
 	ModApiServer::Initialize(L, top);
-	ModApiUtil::Initialize(L, top);
-	ModApiHttp::Initialize(L, top);
+		ModApiUtil::Initialize(L, top);
+			ModApiCameraControl::Initialize(L, top);
+			ModApiFogControl::Initialize(L, top);
+			ModApiSkyKeyframesControl::Initialize(L, top);
+			ModApiHttp::Initialize(L, top);
 	ModApiStorage::Initialize(L, top);
 	ModApiChannels::Initialize(L, top);
 	ModApiIPC::Initialize(L, top);
@@ -180,4 +189,73 @@ void ServerScripting::InitializeAsync(lua_State *L, int top)
 	assert(data);
 	script_unpack(L, data);
 	lua_setfield(L, top, "transferred_globals");
+}
+
+void ServerScripting::unrefParticleSpawnCallback(int ref)
+{
+	lua_State *L = getStack();
+	if (ref != LUA_NOREF && ref != LUA_REFNIL)
+		luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+static void apply_particle_spawn_overrides(lua_State *L, int table_index, ParticleParameters &pp)
+{
+	if (table_index < 0)
+		table_index = lua_gettop(L) + 1 + table_index;
+
+	lua_getfield(L, table_index, "velocity");
+	if (lua_istable(L, -1))
+		pp.vel = check_v3f(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, table_index, "pos");
+	if (lua_istable(L, -1))
+		pp.pos = check_v3f(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, table_index, "acceleration");
+	if (lua_istable(L, -1))
+		pp.acc = check_v3f(L, -1);
+	lua_pop(L, 1);
+
+	lua_getfield(L, table_index, "size");
+	if (lua_isnumber(L, -1))
+		pp.size = static_cast<float>(lua_tonumber(L, -1));
+	lua_pop(L, 1);
+
+	lua_getfield(L, table_index, "expirationtime");
+	if (lua_isnumber(L, -1))
+		pp.expirationtime = static_cast<float>(lua_tonumber(L, -1));
+	lua_pop(L, 1);
+}
+
+bool ServerScripting::runParticleSpawnCallback(int ref, u32 index, ParticleParameters &pp,
+		const std::string &origin_mod)
+{
+	lua_State *L = getStack();
+	int top = lua_gettop(L);
+
+	int error_handler = PUSH_ERROR_HANDLER(L);
+	if (!origin_mod.empty())
+		setOriginDirect(origin_mod.c_str());
+	else
+		setOriginDirect(nullptr);
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+	lua_pushinteger(L, index);
+	int result = lua_pcall(L, 1, 1, error_handler);
+	if (result != 0) {
+		try {
+			scriptError(result, "on_particle_spawn");
+		} catch (...) {
+			lua_settop(L, top);
+			return false;
+		}
+	}
+
+	if (lua_istable(L, -1))
+		apply_particle_spawn_overrides(L, -1, pp);
+
+	lua_settop(L, top);
+	return true;
 }

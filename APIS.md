@@ -2,6 +2,47 @@
 
 This fork adds Android `htmlview` APIs and upgrades glTF animation support.
 
+## Camera control (Lua)
+
+Server-driven per-player camera control, synced to the client.
+
+`core.camera.set(player, preset, opts)`
+- `player`: `ObjectRef` (player)
+- `preset`: string
+  - `"first_person"`
+  - `"third_person"`
+  - `"third_person_front"`
+  - `"free"`
+  - `"follow_orbit"`
+- `opts`: table (preset-specific)
+  - `ease`: optional `{ time = number, type = string }`
+    - `type`: `"linear" | "in_cubic" | "out_cubic" | "in_out_cubic" | "out_back"`
+  - `lock_input`: optional boolean (default `false`)
+  - `fov`: optional number (degrees). For `first_person`/`third_person` presets.
+
+`core.camera.clear(player, opts?)`
+- Resets camera to default.
+- Optional `opts.ease` for smooth transition.
+
+`core.camera.shake(player, { intensity, duration, decay })`
+
+`core.camera.fade(player, { color, fade_in, hold, fade_out, callback? })`
+- `color`: `"#RRGGBB"` or `"#RRGGBBAA"`
+- `callback`: called when the `hold` phase starts.
+
+### `free` preset options
+
+`core.camera.set(player, "free", { pos, facing?, rot?, ease?, lock_input? })`
+- `pos`: `{x,y,z}` (world pos)
+- `facing`: `{x,y,z}` look-at point (optional)
+- `rot`: `{x,y,z}` Euler degrees (optional)
+
+### `follow_orbit` preset options
+
+`core.camera.set(player, "follow_orbit", { target, radius, yaw_offset, pitch_offset, view_offset })`
+- `target`: entity `ObjectRef` or position table
+- `view_offset`: `{x,y,z}`
+
 ## Android: `htmlview` (Lua)
 
 Available only on Android builds. On non-Android platforms, calling these functions errors.
@@ -159,3 +200,72 @@ Additive layers can be built on top of base animations using relative bone overr
 - If you need facial expressions/emotes today, emulate morphs via:
   - mesh swapping (`ObjectRef:set_properties({mesh=...})`)
   - bone scaling/rotation overrides on dedicated facial bones
+
+## Particle spawner upgrades (Lua)
+
+These extend `core.add_particlespawner({ ... })`.
+
+### Emit from entity bone
+
+`attached` can be a table:
+
+- `attached = { object = entity_ref, bone = "bone_name", offset = vector.new(x,y,z) }`
+
+If the bone cannot be resolved on the client, the spawner falls back to the entity origin.
+
+### Color gradient over lifetime
+
+`color_over_lifetime = { { t = 0.0, color = "#RRGGBBAA" }, ... }`
+
+Colors are interpolated linearly between keyframes.
+
+### Billboard facing modes
+
+`face_camera` (string):
+- `"rotate_xyz"` (default)
+- `"rotate_y"`
+- `"velocity"`
+- `"world"`
+
+### Per-particle spawn callback
+
+`on_particle_spawn = function(index) return overrides end`
+
+Supported override fields:
+- `pos = {x,y,z}`
+- `velocity = {x,y,z}`
+- `acceleration = {x,y,z}`
+- `size = number`
+- `expirationtime = number`
+
+Notes:
+- When `on_particle_spawn` is provided, the spawner is simulated server-side and particles are sent as individual spawns.
+- In this mode, `attached.bone` is ignored (server does not have access to client skeleton pose), and `color_over_lifetime` is not applied.
+- Keep `amount` modest; the callback runs once per spawned particle.
+
+## Per-player fog (Lua)
+
+`core.set_fog(player, def_or_nil)`
+
+`def_or_nil`:
+- `nil`: clears fog override (returns to normal sky-driven fog)
+- table:
+  - `color`: `"#RRGGBB"` or `"#RRGGBBAA"`
+  - `fog_start`: number (0..1 fraction of render distance)
+  - `fog_end`: number (0..1 fraction of render distance)
+  - `blend_time`: number seconds (default `0`)
+  - `weather`: optional table `{ color, fog_start, fog_end }` (stored and synced; currently not auto-applied)
+
+## Time-of-day sky keyframes (Lua)
+
+`core.set_sky_keyframes(player, def_or_nil)`
+
+`def_or_nil`:
+- `nil`: clears sky keyframes (returns to normal sky colors)
+- table:
+  - array part: keyframes, each `{ time=0..1, sky=color, fog=color?, ambient=color? }`
+  - `interpolation`: optional string (`"linear"` default, or `"cubic"`)
+
+Notes:
+- `sky` controls the upper sky color; `fog` controls horizon/fog color.
+- `ambient` is currently applied to cloud ambient shading only (does not affect node lighting).

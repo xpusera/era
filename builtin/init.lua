@@ -48,6 +48,7 @@ dofile(commonpath .. "strict.lua")
 dofile(commonpath .. "serialize.lua")
 dofile(commonpath .. "misc_helpers.lua")
 dofile(commonpath .. "animator.lua")
+dofile(commonpath .. "camera.lua")
 
 if INIT == "game" then
 	dofile(scriptdir .. "game" .. DIR_DELIM .. "init.lua")

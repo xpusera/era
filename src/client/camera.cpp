@@ -21,6 +21,8 @@
 #include "script/scripting_client.h"
 #include "gettext.h"
 
+#include <algorithm>
+
 #include <ICameraSceneNode.h>
 #include <IGUIFont.h>
 #include <ISceneNode.h>
@@ -66,6 +68,209 @@ Camera::Camera(MapDrawControl &draw_control, Client *client, RenderingEngine *re
 	readSettings();
 	for (auto name : setting_names)
 		g_settings->registerChangedCallback(name, settingChangedCallback, this);
+}
+
+f32 Camera::easeT(f32 t, ServerEaseType type)
+{
+	t = core::clamp(t, 0.0f, 1.0f);
+	switch (type) {
+	case ServerEaseType::linear:
+		return t;
+	case ServerEaseType::in_cubic:
+		return t * t * t;
+	case ServerEaseType::out_cubic: {
+		f32 u = 1.0f - t;
+		return 1.0f - u * u * u;
+	}
+	case ServerEaseType::in_out_cubic:
+		if (t < 0.5f) {
+			return 4.0f * t * t * t;
+		} else {
+			f32 u = -2.0f * t + 2.0f;
+			return 1.0f - (u * u * u) / 2.0f;
+		}
+	case ServerEaseType::out_back: {
+		constexpr f32 c1 = 1.70158f;
+		constexpr f32 c3 = c1 + 1.0f;
+		f32 u = t - 1.0f;
+		return 1.0f + c3 * u * u * u + c1 * u * u;
+	}
+	}
+	return t;
+}
+
+void Camera::updateCameraNodeTransform(const v3f &pos, const v3f &dir, const v3f &up)
+{
+	m_cameranode->setPosition(pos - intToFloat(m_camera_offset, BS));
+	m_cameranode->setUpVector(up);
+	m_cameranode->updateAbsolutePosition();
+	m_cameranode->setTarget(pos - intToFloat(m_camera_offset, BS) + 100.0f * dir);
+}
+
+void Camera::applyServerTransition(f32 dtime, const v3f &to_pos, const v3f &to_dir,
+		const v3f &to_up, v3f *out_pos, v3f *out_dir, v3f *out_up)
+{
+	if (!m_server_transition.active || m_server_transition.duration <= 0.0f) {
+		*out_pos = to_pos;
+		*out_dir = to_dir;
+		*out_up = to_up;
+		return;
+	}
+
+	m_server_transition.elapsed += dtime;
+	f32 t = m_server_transition.elapsed / m_server_transition.duration;
+	f32 k = easeT(t, m_server_transition.type);
+
+	*out_pos = m_server_transition.from_pos.getInterpolated(to_pos, k);
+	*out_dir = m_server_transition.from_dir.getInterpolated(to_dir, k);
+	if (out_dir->getLengthSQ() > 0.000001f)
+		out_dir->normalize();
+	else
+		*out_dir = v3f(0, 0, 1);
+	*out_up = m_server_transition.from_up.getInterpolated(to_up, k);
+	if (out_up->getLengthSQ() > 0.000001f)
+		out_up->normalize();
+	else
+		*out_up = v3f(0, 1, 0);
+
+	if (t >= 1.0f)
+		m_server_transition.active = false;
+}
+
+void Camera::applyShake(f32 dtime, v3f *dir, v3f *up)
+{
+	if (!m_server_shake.active || m_server_shake.duration <= 0.0f)
+		return;
+
+	m_server_shake.elapsed += dtime;
+	f32 t = core::clamp(m_server_shake.elapsed / m_server_shake.duration, 0.0f, 1.0f);
+	f32 amp = m_server_shake.intensity_deg;
+	if (m_server_shake.decay)
+		amp *= (1.0f - t);
+
+	f32 yaw = myrand_range(-amp, amp);
+	f32 pitch = myrand_range(-amp, amp);
+
+	dir->rotateYZBy(pitch);
+	dir->rotateXZBy(yaw);
+	up->rotateYZBy(pitch);
+	up->rotateXZBy(yaw);
+
+	if (m_server_shake.elapsed >= m_server_shake.duration)
+		m_server_shake.active = false;
+}
+
+void Camera::updateServerCameraOverride(f32 dtime, v3f *pos, v3f *dir, v3f *up)
+{
+	(void)dtime;
+	if (!m_server_camera_active)
+		return;
+
+	const auto preset = m_server_spec.preset;
+	if (preset != ServerPreset::free && preset != ServerPreset::follow_orbit)
+		return;
+
+	*up = v3f(0, 1, 0);
+
+	if (preset == ServerPreset::free) {
+		*pos = m_server_spec.free_pos * BS;
+		if (m_server_spec.free_orient_type == 1) {
+			v3f facing = m_server_spec.free_orient * BS;
+			*dir = facing - *pos;
+			if (dir->getLengthSQ() > 0.000001f)
+				dir->normalize();
+			else
+				*dir = v3f(0, 0, 1);
+		} else {
+			v3f rot = m_server_spec.free_orient;
+			v3f d(0, 0, 1);
+			d.rotateYZBy(rot.X);
+			d.rotateXZBy(rot.Y);
+			if (d.getLengthSQ() > 0.000001f)
+				d.normalize();
+			*dir = d;
+		}
+		return;
+	}
+
+	v3f target;
+	if (m_server_spec.orbit_target_type == 1 && m_server_spec.orbit_target_object_id != 0) {
+		if (GenericCAO *obj = m_client->getEnv().getGenericCAO(m_server_spec.orbit_target_object_id)) {
+			target = obj->getPosition();
+		} else {
+			target = m_server_spec.orbit_target_pos * BS;
+		}
+	} else {
+		target = m_server_spec.orbit_target_pos * BS;
+	}
+	target += m_server_spec.orbit_view_offset * BS;
+
+	v3f ofs(0, 0, m_server_spec.orbit_radius * BS);
+	ofs.rotateXZBy(m_server_spec.orbit_yaw_offset);
+	ofs.rotateYZBy(m_server_spec.orbit_pitch_offset);
+
+	*pos = target + ofs;
+	*dir = target - *pos;
+	if (dir->getLengthSQ() > 0.000001f)
+		dir->normalize();
+	else
+		*dir = v3f(0, 0, 1);
+}
+
+void Camera::applyServerCameraSet(const ServerSetSpec &spec)
+{
+	m_server_camera_active = true;
+	m_server_spec = spec;
+	m_server_input_locked = spec.lock_input;
+
+	m_server_transition.active = spec.ease_time > 0.0f;
+	m_server_transition.duration = std::max(spec.ease_time, 0.0f);
+	m_server_transition.elapsed = 0.0f;
+	m_server_transition.type = spec.ease_type;
+	m_server_transition.from_pos = m_camera_position;
+	m_server_transition.from_dir = m_camera_direction;
+	m_server_transition.from_up = m_cameranode ? m_cameranode->getUpVector() : v3f(0, 1, 0);
+
+	switch (spec.preset) {
+	case ServerPreset::first_person:
+		m_camera_mode = CAMERA_MODE_FIRST;
+		break;
+	case ServerPreset::third_person:
+		m_camera_mode = CAMERA_MODE_THIRD;
+		break;
+	case ServerPreset::third_person_front:
+		m_camera_mode = CAMERA_MODE_THIRD_FRONT;
+		break;
+	case ServerPreset::free:
+	case ServerPreset::follow_orbit:
+		m_camera_mode = CAMERA_MODE_THIRD;
+		break;
+	}
+}
+
+void Camera::applyServerCameraClear(f32 ease_time, ServerEaseType ease_type)
+{
+	m_server_camera_active = false;
+	m_server_input_locked = false;
+
+	m_server_transition.active = ease_time > 0.0f;
+	m_server_transition.duration = std::max(ease_time, 0.0f);
+	m_server_transition.elapsed = 0.0f;
+	m_server_transition.type = ease_type;
+	m_server_transition.from_pos = m_camera_position;
+	m_server_transition.from_dir = m_camera_direction;
+	m_server_transition.from_up = m_cameranode ? m_cameranode->getUpVector() : v3f(0, 1, 0);
+
+	m_camera_mode = CAMERA_MODE_FIRST;
+}
+
+void Camera::applyServerCameraShake(f32 intensity_deg, f32 duration, bool decay)
+{
+	m_server_shake.active = duration > 0.0f && intensity_deg > 0.0f;
+	m_server_shake.intensity_deg = std::max(intensity_deg, 0.0f);
+	m_server_shake.duration = std::max(duration, 0.0f);
+	m_server_shake.elapsed = 0.0f;
+	m_server_shake.decay = decay;
 }
 
 void Camera::settingChangedCallback(const std::string &name, void *data)
@@ -453,13 +658,30 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 		m_camera_position = my_cp;
 	}
 
-	// Set camera node transformation
-	m_cameranode->setPosition(m_camera_position - intToFloat(m_camera_offset, BS));
-	m_cameranode->setUpVector(abs_cam_up);
-	m_cameranode->updateAbsolutePosition();
-	// *100 helps in large map coordinates
-	m_cameranode->setTarget(m_camera_position - intToFloat(m_camera_offset, BS)
-		+ 100 * m_camera_direction);
+	// Apply server override/transition/shake and set camera node transformation
+	v3f final_pos = m_camera_position;
+	v3f final_dir = m_camera_direction;
+	v3f final_up = abs_cam_up;
+
+	v3f override_pos = final_pos;
+	v3f override_dir = final_dir;
+	v3f override_up = final_up;
+	const bool has_override = m_server_camera_active &&
+		(m_server_spec.preset == ServerPreset::free || m_server_spec.preset == ServerPreset::follow_orbit);
+	if (has_override) {
+		updateServerCameraOverride(frametime, &override_pos, &override_dir, &override_up);
+		applyServerTransition(frametime, override_pos, override_dir, override_up,
+				&final_pos, &final_dir, &final_up);
+	} else {
+		applyServerTransition(frametime, final_pos, final_dir, final_up,
+				&final_pos, &final_dir, &final_up);
+	}
+
+	applyShake(frametime, &final_dir, &final_up);
+
+	m_camera_position = final_pos;
+	m_camera_direction = final_dir;
+	updateCameraNodeTransform(final_pos, final_dir, final_up);
 
 	/*
 	 * Apply server-sent FOV, instantaneous or smooth transition.

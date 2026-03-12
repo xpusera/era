@@ -11,6 +11,8 @@
 struct ParticleParameters;
 struct ParticleSpawnerParameters;
 struct SkyboxParams;
+struct FogControlParams;
+struct SkyKeyframesParams;
 struct SunParams;
 struct MoonParams;
 struct StarParams;
@@ -29,16 +31,19 @@ enum ClientEventType : u8
 	CE_DELETE_PARTICLESPAWNER,
 	CE_HUDADD,
 	CE_HUDRM,
-	CE_HUDCHANGE,
-	CE_SET_SKY,
-	CE_SET_SUN,
+		CE_HUDCHANGE,
+			CE_SET_SKY,
+			CE_SET_FOG,
+			CE_SET_SKY_KEYFRAMES,
+			CE_SET_SUN,
 	CE_SET_MOON,
 	CE_SET_STARS,
 	CE_OVERRIDE_DAY_NIGHT_RATIO,
-	CE_CLOUD_PARAMS,
-	CE_UPDATE_CAMERA,
-	CLIENTEVENT_MAX,
-};
+		CE_CLOUD_PARAMS,
+		CE_UPDATE_CAMERA,
+		CE_CAMERA_FADE,
+		CLIENTEVENT_MAX,
+	};
 
 struct ClientEventHudAdd
 {
@@ -106,16 +111,18 @@ struct ClientEvent
 		{
 			u32 id;
 		} hudrm;
-		ClientEventHudChange *hudchange;
-		SkyboxParams *set_sky;
+			ClientEventHudChange *hudchange;
+				SkyboxParams *set_sky;
+				FogControlParams *set_fog;
+				SkyKeyframesParams *set_sky_keyframes;
 		struct
 		{
 			bool do_override;
 			float ratio_f;
 		} override_day_night_ratio;
-		struct
-		{
-			f32 density;
+			struct
+			{
+				f32 density;
 			u32 color_bright;
 			u32 color_ambient;
 			u32 color_shadow;
@@ -123,9 +130,16 @@ struct ClientEvent
 			f32 thickness;
 			f32 speed_x;
 			f32 speed_y;
-		} cloud_params;
-		SunParams *sun_params;
-		MoonParams *moon_params;
-		StarParams *star_params;
+			} cloud_params;
+			struct
+			{
+				u32 argb;
+				f32 fade_in;
+				f32 hold;
+				f32 fade_out;
+			} camera_fade;
+			SunParams *sun_params;
+			MoonParams *moon_params;
+			StarParams *star_params;
+		};
 	};
-};

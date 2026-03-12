@@ -17,6 +17,7 @@
 #include "threading/ordered_mutex.h"
 #include "translation.h"
 #include "sound_spec.h"
+#include "particles.h"
 #include <atomic>
 #include <csignal>
 #include <string>
@@ -54,6 +55,8 @@ struct ChatEventChat;
 struct ChatInterface;
 struct ChatMessage;
 struct CloudParams;
+	struct FogControlParams;
+	struct SkyKeyframesParams;
 struct GameParams;
 struct Lighting;
 struct MoonParams;
@@ -296,9 +299,14 @@ public:
 	void spawnParticle(const std::string &playername,
 		const ParticleParameters &p);
 
-	u32 addParticleSpawner(const ParticleSpawnerParameters &p,
-		ServerActiveObject *attached, const std::string &to_player,
-		const std::string &exclude_player);
+		u32 addParticleSpawner(const ParticleSpawnerParameters &p,
+			ServerActiveObject *attached, const std::string &to_player,
+			const std::string &exclude_player);
+
+		u32 addScriptedParticleSpawner(const ParticleSpawnerParameters &p,
+			ServerActiveObject *attached, const std::string &to_player,
+			const std::string &exclude_player, int on_particle_spawn_ref,
+			const std::string &origin_mod);
 
 	void deleteParticleSpawner(const std::string &playername, u32 id);
 
@@ -385,8 +393,10 @@ public:
 			f32 frame_speed);
 	void setPlayerEyeOffset(RemotePlayer *player, v3f first, v3f third, v3f third_front);
 
-	void setSky(RemotePlayer *player, const SkyboxParams &params);
-	void setSun(RemotePlayer *player, const SunParams &params);
+		void setSky(RemotePlayer *player, const SkyboxParams &params);
+		void setFog(RemotePlayer *player, const FogControlParams &params);
+		void setSkyKeyframes(RemotePlayer *player, const SkyKeyframesParams &params);
+		void setSun(RemotePlayer *player, const SunParams &params);
 	void setMoon(RemotePlayer *player, const MoonParams &params);
 	void setStars(RemotePlayer *player, const StarParams &params);
 
@@ -420,8 +430,18 @@ public:
 	void SendMovePlayer(PlayerSAO *sao);
 	void SendMovePlayerRel(session_t peer_id, const v3f &added_pos);
 	void SendPlayerSpeed(session_t peer_id, const v3f &added_vel);
-	void SendPlayerFov(session_t peer_id);
-	void SendCamera(session_t peer_id, Player *player);
+		void SendPlayerFov(session_t peer_id);
+		void SendCamera(session_t peer_id, Player *player);
+		void SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_time,
+			u8 ease_type, bool lock_input);
+		void SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
+			bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient);
+		void SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
+			bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
+			f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset);
+		void SendCameraControlClear(session_t peer_id, f32 ease_time, u8 ease_type);
+		void SendCameraControlShake(session_t peer_id, f32 intensity, f32 duration, bool decay);
+		void SendCameraControlFade(session_t peer_id, u32 argb, f32 fade_in, f32 hold, f32 fade_out);
 
 	void SendMinimapModes(session_t peer_id,
 			std::vector<MinimapMode> &modes,
@@ -554,8 +574,10 @@ private:
 	void SendHUDChange(session_t peer_id, u32 id, HudElementStat stat, void *value);
 	void SendHUDSetFlags(session_t peer_id, u32 flags, u32 mask);
 	void SendHUDSetParam(session_t peer_id, u16 param, std::string_view value);
-	void SendSetSky(session_t peer_id, const SkyboxParams &params);
-	void SendSetSun(session_t peer_id, const SunParams &params);
+		void SendSetSky(session_t peer_id, const SkyboxParams &params);
+		void SendSetFog(session_t peer_id, const FogControlParams &params);
+		void SendSetSkyKeyframes(session_t peer_id, const SkyKeyframesParams &params);
+		void SendSetSun(session_t peer_id, const SunParams &params);
 	void SendSetMoon(session_t peer_id, const MoonParams &params);
 	void SendSetStars(session_t peer_id, const StarParams &params);
 	void SendCloudParams(session_t peer_id, const CloudParams &params);
@@ -813,10 +835,30 @@ private:
 	MetricCounterPtr m_packet_recv_processed_counter;
 	MetricCounterPtr m_map_edit_event_counter;
 
-	// Particles to send this server step
-	// [playername] = list of params, empty playername for broadcast
-	std::unordered_map<std::string, std::vector<ParticleParameters>> m_particles_to_send;
-};
+		// Particles to send this server step
+		// [playername] = list of params, empty playername for broadcast
+		std::unordered_map<std::string, std::vector<ParticleParameters>> m_particles_to_send;
+
+		struct ScriptedParticleSpawner {
+			ParticleSpawnerParameters p;
+			u16 attached_id = 0;
+			std::string to_player;
+			std::unordered_set<std::string> exclude_players;
+			float elapsed = 0.0f;
+			std::vector<float> spawntimes;
+			size_t next_spawntime = 0;
+			u32 spawned = 0;
+			int on_particle_spawn_ref = 0;
+			std::string origin_mod;
+		};
+
+		u32 m_scripted_particle_spawner_id_last_used = 0x80000000u;
+		std::unordered_map<u32, ScriptedParticleSpawner> m_scripted_particle_spawners;
+
+		void stepScriptedParticleSpawners(float dtime);
+		bool deleteScriptedParticleSpawner(u32 id);
+		bool deleteScriptedParticleSpawnerForPlayer(u32 id, const std::string &playername);
+	};
 
 /*
 	Runs a simple dedicated server loop.

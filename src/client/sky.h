@@ -11,6 +11,8 @@
 #include "camera.h" // CameraMode
 #include "irr_ptr.h"
 #include "skyparams.h"
+#include "fogparams.h"
+#include "skykeyframesparams.h"
 
 #define SKY_MATERIAL_COUNT 12
 
@@ -113,14 +115,20 @@ public:
 	s16 getFogDistance() const { return m_sky_params.fog_distance; }
 
 	void setFogStart(float fog_start) { m_sky_params.fog_start = fog_start; }
-	float getFogStart() const { return m_sky_params.fog_start; }
+	float getFogStart() const;
+	float getFogEnd() const;
 
 	void setFogColor(video::SColor v) { m_sky_params.fog_color = v; }
-	video::SColor getFogColor() const {
-		if (m_sky_params.fog_color.getAlpha() > 0)
-			return m_sky_params.fog_color;
-		return getBgColor();
-	}
+	video::SColor getFogColor() const;
+
+		void setFogOverride(video::SColor color, float fog_start, float fog_end, float blend_time);
+		void clearFogOverride(float blend_time);
+		void stepFog(float dtime);
+
+		void setSkyKeyframes(const SkyKeyframesParams &params);
+		void clearSkyKeyframes();
+		bool hasSkyKeyframes() const { return m_sky_keyframes_enabled; }
+		video::SColor getSkyKeyframeAmbientColor() const { return m_sky_keyframes_ambient_color; }
 
 private:
 	aabb3f m_box{{0.0f, 0.0f, 0.0f}};
@@ -192,8 +200,23 @@ private:
 		191.0f/255.0f
 	);
 
-	SkyboxParams m_sky_params;
-	SunParams m_sun_params;
+		SkyboxParams m_sky_params;
+
+		bool m_fog_override_enabled = false;
+		bool m_fog_blend_active = false;
+		FogVariantParams m_fog_blend_from;
+		FogVariantParams m_fog_blend_to;
+			FogVariantParams m_fog_override_current;
+			float m_fog_blend_total = 0.0f;
+			float m_fog_blend_elapsed = 0.0f;
+
+			bool m_sky_keyframes_enabled = false;
+			SkyKeyframesParams m_sky_keyframes;
+			video::SColor m_sky_keyframes_sky_color = video::SColor(255, 255, 255, 255);
+			video::SColor m_sky_keyframes_fog_color = video::SColor(255, 255, 255, 255);
+			video::SColor m_sky_keyframes_ambient_color = video::SColor(255, 0, 0, 0);
+
+		SunParams m_sun_params;
 	MoonParams m_moon_params;
 	StarParams m_star_params;
 

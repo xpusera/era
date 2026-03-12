@@ -248,6 +248,7 @@ void ParticleParameters::serialize(std::ostream &os, u16 protocol_ver) const
 	jitter.serialize(os);
 	bounce.serialize(os);
 	texture.serialize(os, protocol_ver, true, true);
+	writeU8(os, static_cast<u8>(face_camera));
 }
 
 void ParticleParameters::deSerialize(std::istream &is, u16 protocol_ver)
@@ -286,4 +287,11 @@ void ParticleParameters::deSerialize(std::istream &is, u16 protocol_ver)
 	// >= 5.9.0-dev
 
 	texture.deSerialize(is, protocol_ver, true, true);
+
+	if (!canRead(is))
+		return;
+
+	face_camera = static_cast<CommonParticleParams::FacingMode>(readU8(is));
+	if (static_cast<u8>(face_camera) > static_cast<u8>(CommonParticleParams::FacingMode::world))
+		face_camera = CommonParticleParams::FacingMode::rotate_xyz;
 }

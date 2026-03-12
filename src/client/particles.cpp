@@ -3,6 +3,7 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "particles.h"
+#include <algorithm>
 #include <cmath>
 #include <array>
 #include "client.h"
@@ -11,6 +12,7 @@
 #include "client/clientevent.h"
 #include "client/renderingengine.h"
 #include "client/texturesource.h"
+#include <AnimatedMeshSceneNode.h>
 #include "util/numeric.h"
 #include "light.h"
 #include "localplayer.h"
@@ -64,10 +66,11 @@ Particle::Particle(
 		video::SColor color,
 		ParticleSpawner *parent,
 		std::unique_ptr<ClientParticleTexture> owned_texture
-	) :
-		m_expiration(p.expirationtime),
+		) :
+			m_expiration(p.expirationtime),
 
-		m_base_color(color),
+			m_initial_color(color),
+			m_base_color(color),
 
 		m_texture(texture),
 		m_texpos(texpos),
@@ -102,6 +105,14 @@ bool Particle::attachToBuffer(ParticleBuffer *buffer)
 void Particle::step(float dtime, ClientEnvironment *env)
 {
 	m_time += dtime;
+
+	if (m_parent && m_parent->hasColorOverLifetime() && m_expiration > 0.0f) {
+		float t = m_time / (m_expiration + 0.0001f);
+		t = std::clamp(t, 0.0f, 1.0f);
+		m_base_color = m_parent->sampleColorOverLifetime(t);
+	} else {
+		m_base_color = m_initial_color;
+	}
 
 	// apply drag (not handled by collisionMoveSimple) and brownian motion
 	v3f av = vecAbsolute(m_velocity);
@@ -171,7 +182,7 @@ void Particle::step(float dtime, ClientEnvironment *env)
 
 	// Update lighting
 	auto col = updateLight(env);
-	col.setAlpha(255 * alpha);
+	col.setAlpha(std::min<u32>(255, static_cast<u32>(col.getAlpha() * alpha)));
 
 	// Update model
 	updateVertices(env, col);
@@ -195,7 +206,7 @@ video::SColor Particle::updateLight(ClientEnvironment *env)
 		light = blend_light(env->getDayNightRatio(), LIGHT_SUN, 0);
 
 	u8 m_light = decode_light(light + m_p.glow);
-	return video::SColor(255,
+	return video::SColor(m_base_color.getAlpha(),
 		m_light * m_base_color.getRed() / 255,
 		m_light * m_base_color.getGreen() / 255,
 		m_light * m_base_color.getBlue() / 255);
@@ -253,16 +264,69 @@ void Particle::updateVertices(ClientEnvironment *env, video::SColor color)
 
 	for (u16 i = 0; i < 4; i++) {
 		video::S3DVertex &vertex = vertices[i];
-		if (m_p.vertical) {
-			v3f ppos = player->getPosition() / BS;
-			vertex.Pos.rotateXZBy(std::atan2(ppos.Z - m_pos.Z, ppos.X - m_pos.X) /
-				core::DEGTORAD + 90);
-		} else {
-			vertex.Pos.rotateYZBy(player->getPitch());
-			vertex.Pos.rotateXZBy(player->getYaw());
+		auto mode = m_p.face_camera;
+		if (mode == CommonParticleParams::FacingMode::rotate_xyz && m_p.vertical)
+			mode = CommonParticleParams::FacingMode::rotate_y;
+		switch (mode) {
+			case CommonParticleParams::FacingMode::rotate_y: {
+				v3f ppos = player->getPosition() / BS;
+				vertex.Pos.rotateXZBy(std::atan2(ppos.Z - m_pos.Z, ppos.X - m_pos.X) /
+						core::DEGTORAD + 90);
+				break;
+			}
+			case CommonParticleParams::FacingMode::velocity: {
+				float angle = 0.0f;
+				v3f v = m_velocity;
+				if (v.getLengthSQ() > 0.0001f) {
+					v.rotateXZBy(-player->getYaw());
+					v.rotateYZBy(-player->getPitch());
+					angle = std::atan2(v.Y, v.X) / core::DEGTORAD;
+				}
+				vertex.Pos.rotateXYBy(angle);
+				vertex.Pos.rotateYZBy(player->getPitch());
+				vertex.Pos.rotateXZBy(player->getYaw());
+				break;
+			}
+			case CommonParticleParams::FacingMode::world:
+				break;
+			case CommonParticleParams::FacingMode::rotate_xyz:
+			default:
+				vertex.Pos.rotateYZBy(player->getPitch());
+				vertex.Pos.rotateXZBy(player->getYaw());
+				break;
 		}
 		vertex.Pos += m_pos * BS - intToFloat(camera_offset, BS);
 	}
+}
+
+video::SColor ParticleSpawner::sampleColorOverLifetime(float t) const
+{
+	const auto &keys = p.color_over_lifetime;
+	if (keys.empty())
+		return video::SColor(255, 255, 255, 255);
+	if (t <= keys.front().t)
+		return keys.front().color;
+	if (t >= keys.back().t)
+		return keys.back().color;
+
+	for (size_t i = 1; i < keys.size(); i++) {
+		if (t <= keys[i].t) {
+			const auto &a = keys[i - 1];
+			const auto &b = keys[i];
+			float dt = b.t - a.t;
+			float f = dt > 0.0f ? (t - a.t) / dt : 1.0f;
+			f = std::clamp(f, 0.0f, 1.0f);
+			auto lerp = [&](u8 av, u8 bv) -> u8 {
+				return static_cast<u8>(std::lround(av + (bv - av) * f));
+			};
+			return video::SColor(
+					lerp(a.color.getAlpha(), b.color.getAlpha()),
+					lerp(a.color.getRed(), b.color.getRed()),
+					lerp(a.color.getGreen(), b.color.getGreen()),
+					lerp(a.color.getBlue(), b.color.getBlue()));
+		}
+	}
+	return keys.back().color;
 }
 
 /*
@@ -340,13 +404,14 @@ void ParticleSpawner::spawnParticle(ClientEnvironment *env, float radius,
 	v3f pos = r_pos.pickWithin();
 	v3f sphere_radius = r_radius.pickWithin();
 
-	// Need to apply this first or the following check
-	// will be wrong for attached spawners
-	if (attached_absolute_pos_rot_matrix) {
-		pos *= BS;
-		attached_absolute_pos_rot_matrix->transformVect(pos);
-		pos /= BS;
-		v3s16 camera_offset = m_particlemanager->m_env->getCameraOffset();
+		// Need to apply this first or the following check
+		// will be wrong for attached spawners
+		if (attached_absolute_pos_rot_matrix) {
+			pos += p.attached_offset;
+			pos *= BS;
+			attached_absolute_pos_rot_matrix->transformVect(pos);
+			pos /= BS;
+			v3s16 camera_offset = m_particlemanager->m_env->getCameraOffset();
 		pos.X += camera_offset.X;
 		pos.Y += camera_offset.Y;
 		pos.Z += camera_offset.Z;
@@ -525,9 +590,18 @@ void ParticleSpawner::step(float dtime, ClientEnvironment *env)
 
 	bool unloaded = false;
 	const core::matrix4 *attached_absolute_pos_rot_matrix = nullptr;
+	core::matrix4 attached_bone_matrix;
 	if (m_attached_id) {
 		if (GenericCAO *attached = env->getGenericCAO(m_attached_id)) {
 			attached_absolute_pos_rot_matrix = attached->getAbsolutePosRotMatrix();
+			if (!p.attached_bone.empty()) {
+				if (auto *meshnode = attached->getAnimatedMeshSceneNode()) {
+					if (auto *joint = meshnode->getJointNode(p.attached_bone.c_str())) {
+						attached_bone_matrix = joint->getAbsoluteTransformation();
+						attached_absolute_pos_rot_matrix = &attached_bone_matrix;
+					}
+				}
+			}
 		} else {
 			unloaded = true;
 		}

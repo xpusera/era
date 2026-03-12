@@ -28,6 +28,10 @@
 #include "network/networkpacket.h"
 #include "script/scripting_client.h"
 #include "util/serialize.h"
+#include "fogparams.h"
+#include "skykeyframesparams.h"
+
+#include <algorithm>
 #include "util/srp.h"
 #include "util/hashing.h"
 #include "tileanimation.h"
@@ -1108,18 +1112,46 @@ void Client::handleCommand_AddParticleSpawner(NetworkPacket* pkt)
 		}
 		p.radius.deSerialize(is);
 
-		u16 texpoolsz = readU16(is);
-		p.texpool.reserve(texpoolsz);
-		for (u16 i = 0; i < texpoolsz; ++i) {
-			ServerParticleTexture newtex;
-			newtex.deSerialize(is, m_proto_ver);
-			p.texpool.push_back(newtex);
-		}
+			u16 texpoolsz = readU16(is);
+			p.texpool.reserve(texpoolsz);
+			for (u16 i = 0; i < texpoolsz; ++i) {
+				ServerParticleTexture newtex;
+				newtex.deSerialize(is, m_proto_ver);
+				p.texpool.push_back(newtex);
+			}
 
-		//if (!canRead(is))
-		//	break;
-		// Add new code here
-	} while(0);
+			if (!canRead(is))
+				break;
+			ParticleParamTypes::deSerializeParameterValue(is, p.face_camera);
+			if (static_cast<u8>(p.face_camera) > static_cast<u8>(CommonParticleParams::FacingMode::world))
+				p.face_camera = CommonParticleParams::FacingMode::rotate_xyz;
+
+			if (!canRead(is))
+				break;
+			p.attached_bone = deSerializeString16(is);
+			if (!canRead(is))
+				break;
+			p.attached_offset = readV3F32(is);
+
+			if (!canRead(is))
+				break;
+			u16 colsz;
+			ParticleParamTypes::deSerializeParameterValue(is, colsz);
+			p.color_over_lifetime.clear();
+			p.color_over_lifetime.reserve(colsz);
+			for (u16 i = 0; i < colsz; ++i) {
+				ParticleSpawnerParameters::ColorOverLifetimeKeyframe k;
+				k.t = readF32(is);
+				k.color = video::SColor(readU32(is));
+				p.color_over_lifetime.push_back(k);
+			}
+			std::sort(p.color_over_lifetime.begin(), p.color_over_lifetime.end(),
+					[](const auto &a, const auto &b) { return a.t < b.t; });
+
+			//if (!canRead(is))
+			//	break;
+			// Add new code here
+		} while(0);
 
 	if (missing_end_values) {
 		// there's no tweening data to be had, so we need to set the
@@ -1433,6 +1465,67 @@ void Client::handleCommand_HudSetSky(NetworkPacket* pkt)
 	m_client_event_queue.push(event);
 }
 
+void Client::handleCommand_SetFog(NetworkPacket *pkt)
+{
+	FogControlParams fog;
+	u8 enabled = 0;
+	*pkt >> enabled;
+	fog.enabled = enabled != 0;
+
+	if (fog.enabled) {
+		u32 argb;
+		u8 has_weather = 0;
+		*pkt >> argb >> fog.base.fog_start >> fog.base.fog_end >> fog.blend_time >> has_weather;
+		fog.base.color = video::SColor(argb);
+		fog.has_weather = has_weather != 0;
+		if (fog.has_weather) {
+			u32 wargb;
+			*pkt >> wargb >> fog.weather.fog_start >> fog.weather.fog_end;
+			fog.weather.color = video::SColor(wargb);
+		}
+	}
+
+	auto *event = new ClientEvent();
+	event->type = CE_SET_FOG;
+	event->set_fog = new FogControlParams(fog);
+	m_client_event_queue.push(event);
+}
+
+void Client::handleCommand_SetSkyKeyframes(NetworkPacket *pkt)
+{
+	SkyKeyframesParams sky;
+	u8 enabled = 0;
+	*pkt >> enabled;
+	sky.enabled = enabled != 0;
+
+	if (sky.enabled) {
+		u8 interpolation = 0;
+		u16 count = 0;
+		*pkt >> interpolation >> count;
+		sky.interpolation = (interpolation != 0) ?
+				SkyKeyframeInterpolation::Cubic :
+				SkyKeyframeInterpolation::Linear;
+		sky.keyframes.clear();
+		sky.keyframes.reserve(count);
+		for (u16 i = 0; i < count; i++) {
+			SkyKeyframe k;
+			u32 sky_argb;
+			u32 fog_argb;
+			u32 ambient_argb;
+			*pkt >> k.time >> sky_argb >> fog_argb >> ambient_argb;
+			k.sky = video::SColor(sky_argb);
+			k.fog = video::SColor(fog_argb);
+			k.ambient = video::SColor(ambient_argb);
+			sky.keyframes.push_back(k);
+		}
+	}
+
+	auto *event = new ClientEvent();
+	event->type = CE_SET_SKY_KEYFRAMES;
+	event->set_sky_keyframes = new SkyKeyframesParams(sky);
+	m_client_event_queue.push(event);
+}
+
 void Client::handleCommand_HudSetSun(NetworkPacket *pkt)
 {
 	SunParams sun;
@@ -1581,6 +1674,91 @@ void Client::handleCommand_Camera(NetworkPacket* pkt)
 	player->allowed_camera_mode = static_cast<CameraMode>(tmp);
 
 	m_client_event_queue.push(new ClientEvent(CE_UPDATE_CAMERA));
+}
+
+void Client::handleCommand_CameraControl(NetworkPacket *pkt)
+{
+	u8 type;
+	*pkt >> type;
+
+	switch (type) {
+	case 0: {
+		u8 preset;
+		f32 ease_time;
+		u8 ease_type;
+		u8 lock_input;
+		*pkt >> preset >> ease_time >> ease_type >> lock_input;
+
+		Camera::ServerSetSpec spec;
+		spec.preset = static_cast<Camera::ServerPreset>(preset);
+		spec.ease_time = ease_time;
+		spec.ease_type = static_cast<Camera::ServerEaseType>(ease_type);
+		spec.lock_input = !!lock_input;
+
+		if (spec.preset == Camera::ServerPreset::free) {
+			v3f pos, orient;
+			u8 orient_type;
+			*pkt >> pos >> orient_type >> orient;
+			spec.free_pos = pos;
+			spec.free_orient_type = orient_type;
+			spec.free_orient = orient;
+		} else if (spec.preset == Camera::ServerPreset::follow_orbit) {
+			u8 target_type;
+			*pkt >> target_type;
+			spec.orbit_target_type = target_type;
+			if (target_type == 0) {
+				v3f target_pos;
+				*pkt >> target_pos;
+				spec.orbit_target_pos = target_pos;
+			} else {
+				u16 id;
+				*pkt >> id;
+				spec.orbit_target_object_id = id;
+			}
+			*pkt >> spec.orbit_radius >> spec.orbit_yaw_offset >> spec.orbit_pitch_offset >> spec.orbit_view_offset;
+		}
+
+		if (m_camera)
+			m_camera->applyServerCameraSet(spec);
+		m_client_event_queue.push(new ClientEvent(CE_UPDATE_CAMERA));
+		break;
+	}
+	case 1: {
+		f32 ease_time;
+		u8 ease_type;
+		*pkt >> ease_time >> ease_type;
+		if (m_camera)
+			m_camera->applyServerCameraClear(ease_time, static_cast<Camera::ServerEaseType>(ease_type));
+		m_client_event_queue.push(new ClientEvent(CE_UPDATE_CAMERA));
+		break;
+	}
+	case 2: {
+		f32 intensity;
+		f32 duration;
+		u8 decay;
+		*pkt >> intensity >> duration >> decay;
+		if (m_camera)
+			m_camera->applyServerCameraShake(intensity, duration, !!decay);
+		break;
+	}
+	case 3: {
+		u32 argb;
+		f32 fade_in;
+		f32 hold;
+		f32 fade_out;
+		*pkt >> argb >> fade_in >> hold >> fade_out;
+		auto *event = new ClientEvent();
+		event->type = CE_CAMERA_FADE;
+		event->camera_fade.argb = argb;
+		event->camera_fade.fade_in = fade_in;
+		event->camera_fade.hold = hold;
+		event->camera_fade.fade_out = fade_out;
+		m_client_event_queue.push(event);
+		break;
+	}
+	default:
+		break;
+	}
 }
 
 void Client::handleCommand_UpdatePlayerList(NetworkPacket* pkt)

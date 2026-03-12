@@ -12,6 +12,37 @@
 #include "server.h"
 #include "particles.h"
 
+#include <algorithm>
+
+namespace {
+	static CommonParticleParams::FacingMode parse_face_camera(const std::string &s)
+	{
+		if (s.empty() || s == "camera" || s == "rotate_xyz")
+			return CommonParticleParams::FacingMode::rotate_xyz;
+		if (s == "rotate_y")
+			return CommonParticleParams::FacingMode::rotate_y;
+		if (s == "velocity")
+			return CommonParticleParams::FacingMode::velocity;
+		if (s == "world")
+			return CommonParticleParams::FacingMode::world;
+		throw LuaError("Invalid face_camera mode: " + s);
+	}
+
+	template <typename T>
+	static void read_face_camera_field(lua_State *L, int tbl_index, T &p)
+	{
+		std::string face = getstringfield_default(L, tbl_index, "face_camera", "");
+		if (!face.empty()) {
+			p.face_camera = parse_face_camera(face);
+			p.vertical = (p.face_camera == CommonParticleParams::FacingMode::rotate_y);
+		} else if (p.vertical) {
+			p.face_camera = CommonParticleParams::FacingMode::rotate_y;
+		} else {
+			p.face_camera = CommonParticleParams::FacingMode::rotate_xyz;
+		}
+	}
+}
+
 void LuaParticleParams::readTexValue(lua_State* L, ServerParticleTexture& tex)
 {
 	StackUnroller unroll(L);
@@ -106,9 +137,10 @@ int ModApiParticles::l_add_particle(lua_State *L)
 			"collisiondetection", p.collisiondetection);
 		p.collision_removal = getboolfield_default(L, 1,
 			"collision_removal", p.collision_removal);
-		p.object_collision = getboolfield_default(L, 1,
-			"object_collision", p.object_collision);
-		p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
+			p.object_collision = getboolfield_default(L, 1,
+				"object_collision", p.object_collision);
+			p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
+			read_face_camera_field(L, 1, p);
 
 		lua_getfield(L, 1, "animation");
 		p.animation = read_animation_definition(L, -1);
@@ -243,12 +275,27 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		p.animation = read_animation_definition(L, -1);
 		lua_pop(L, 1);
 
-		lua_getfield(L, 1, "attached");
-		if (!lua_isnil(L, -1)) {
-			ObjectRef *ref = checkObject<ObjectRef>(L, -1);
+			lua_getfield(L, 1, "attached");
+			if (!lua_isnil(L, -1)) {
+				if (lua_istable(L, -1)) {
+					lua_getfield(L, -1, "object");
+					if (!lua_isnil(L, -1)) {
+						ObjectRef *ref = checkObject<ObjectRef>(L, -1);
+						attached = ObjectRef::getobject(ref);
+					}
+					lua_pop(L, 1);
+
+					p.attached_bone = getstringfield_default(L, -1, "bone", "");
+					lua_getfield(L, -1, "offset");
+					if (lua_istable(L, -1))
+						p.attached_offset = check_v3f(L, -1);
+					lua_pop(L, 1);
+				} else {
+					ObjectRef *ref = checkObject<ObjectRef>(L, -1);
+					attached = ObjectRef::getobject(ref);
+				}
+			}
 			lua_pop(L, 1);
-			attached = ObjectRef::getobject(ref);
-		}
 
 		lua_getfield(L, 1, "texture");
 		if (!lua_isnil(L, -1)) {
@@ -256,8 +303,33 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		}
 		lua_pop(L, 1);
 
-		p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
-		p.glow = getintfield_default(L, 1, "glow", p.glow);
+			p.vertical = getboolfield_default(L, 1, "vertical", p.vertical);
+			read_face_camera_field(L, 1, p);
+			p.glow = getintfield_default(L, 1, "glow", p.glow);
+
+			lua_getfield(L, 1, "color_over_lifetime");
+			if (lua_istable(L, -1)) {
+				size_t n = lua_objlen(L, -1);
+				p.color_over_lifetime.clear();
+				p.color_over_lifetime.reserve(n);
+				for (size_t i = 0; i < n; i++) {
+					lua_pushinteger(L, i + 1);
+					lua_gettable(L, -2);
+					luaL_checktype(L, -1, LUA_TTABLE);
+
+					ParticleSpawnerParameters::ColorOverLifetimeKeyframe k;
+					k.t = getfloatfield_default(L, -1, "t", 0.0f);
+					lua_getfield(L, -1, "color");
+					if (!read_color(L, -1, &k.color))
+						throw LuaError("color_over_lifetime entry missing/invalid 'color'");
+					lua_pop(L, 1);
+					p.color_over_lifetime.push_back(k);
+					lua_pop(L, 1);
+				}
+				std::sort(p.color_over_lifetime.begin(), p.color_over_lifetime.end(),
+						[](const auto &a, const auto &b) { return a.t < b.t; });
+			}
+			lua_pop(L, 1);
 
 		lua_getfield(L, 1, "texpool");
 		if (lua_istable(L, -1)) {
@@ -287,7 +359,31 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 	if (p.time < 0)
 		throw LuaError("particle spawner 'time' must be >= 0");
 
-	u32 id = getServer(L)->addParticleSpawner(p, attached, playername, not_playername);
+	int on_spawn_ref = LUA_NOREF;
+	if (lua_istable(L, 1)) {
+		lua_getfield(L, 1, "on_particle_spawn");
+		if (lua_isfunction(L, -1)) {
+			on_spawn_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		} else {
+			if (!lua_isnil(L, -1)) {
+				lua_pop(L, 1);
+				throw LuaError("add_particlespawner: on_particle_spawn must be a function or nil");
+			}
+			lua_pop(L, 1);
+		}
+	}
+
+	u32 id;
+	if (on_spawn_ref != LUA_NOREF) {
+		id = getServer(L)->addScriptedParticleSpawner(p, attached, playername, not_playername,
+			on_spawn_ref, "");
+		if (id == 0) {
+			luaL_unref(L, LUA_REGISTRYINDEX, on_spawn_ref);
+			throw LuaError("add_particlespawner: failed to create scripted particle spawner");
+		}
+	} else {
+		id = getServer(L)->addParticleSpawner(p, attached, playername, not_playername);
+	}
 	lua_pushnumber(L, id);
 
 	return 1;
@@ -316,4 +412,3 @@ void ModApiParticles::Initialize(lua_State *L, int top)
 	API_FCT(add_particlespawner);
 	API_FCT(delete_particlespawner);
 }
-

@@ -694,15 +694,77 @@ enum ToClientCommand : u16
 			f32 center_weight_power
 	*/
 
-	TOCLIENT_SPAWN_PARTICLE_BATCH = 0x64,
-	/*
-		std::string data, zstd-compressed, for each particle:
-			u32 len
-			u8[len] serialized ParticleParameters
-	*/
+		TOCLIENT_SPAWN_PARTICLE_BATCH = 0x64,
+		/*
+			std::string data, zstd-compressed, for each particle:
+				u32 len
+				u8[len] serialized ParticleParameters
+		*/
 
-	TOCLIENT_NUM_MSG_TYPES = 0x65,
-};
+			TOCLIENT_CAMERA_CONTROL = 0x65,
+			/*
+			u8 type (CameraControlType)
+			if type == 0 (set):
+				u8 preset (CameraPreset)
+				f32 ease_time
+				u8 ease_type (CameraEaseType)
+				u8 lock_input
+				if preset == free:
+					v3f pos
+					u8 orient_type (0=rot, 1=facing)
+					v3f orient (rot_deg or facing_pos)
+				if preset == follow_orbit:
+					u8 target_type (0=pos, 1=object)
+					if target_type==0: v3f target_pos
+					if target_type==1: u16 target_object_id
+					f32 radius
+					f32 yaw_offset
+					f32 pitch_offset
+					v3f view_offset
+			if type == 1 (clear):
+				f32 ease_time
+				u8 ease_type
+			if type == 2 (shake):
+				f32 intensity
+				f32 duration
+				u8 decay
+			if type == 3 (fade):
+				u32 argb
+				f32 fade_in
+				f32 hold
+					f32 fade_out
+			*/
+
+			TOCLIENT_SET_FOG = 0x66,
+			/*
+				u8 enabled
+				if enabled != 0:
+					u32 argb
+					f32 fog_start
+					f32 fog_end
+					f32 blend_time
+					u8 has_weather
+					if has_weather != 0:
+						u32 weather_argb
+						f32 weather_fog_start
+						f32 weather_fog_end
+			*/
+
+			TOCLIENT_SET_SKY_KEYFRAMES = 0x67,
+			/*
+				u8 enabled
+				if enabled != 0:
+					u8 interpolation (0=linear, 1=cubic)
+					u16 count
+					for each:
+						f32 time
+						u32 sky_argb
+						u32 fog_argb
+						u32 ambient_argb
+			*/
+
+			TOCLIENT_NUM_MSG_TYPES = 0x68,
+		};
 
 enum ToServerCommand : u16
 {

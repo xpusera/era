@@ -60,6 +60,50 @@ struct Nametag
 class Camera
 {
 public:
+	// Server-controlled camera API (core.camera.*)
+	enum class ServerEaseType : u8 {
+		linear = 0,
+		in_cubic = 1,
+		out_cubic = 2,
+		in_out_cubic = 3,
+		out_back = 4,
+	};
+
+	enum class ServerPreset : u8 {
+		first_person = 0,
+		third_person = 1,
+		third_person_front = 2,
+		free = 3,
+		follow_orbit = 4,
+	};
+
+	struct ServerSetSpec {
+		ServerPreset preset = ServerPreset::first_person;
+		f32 ease_time = 0.0f;
+		ServerEaseType ease_type = ServerEaseType::linear;
+		bool lock_input = false;
+
+		// free
+		v3f free_pos = v3f();
+		u8 free_orient_type = 0; // 0=rot, 1=facing
+		v3f free_orient = v3f();
+
+		// follow_orbit
+		u8 orbit_target_type = 0; // 0=pos, 1=object
+		v3f orbit_target_pos = v3f();
+		u16 orbit_target_object_id = 0;
+		f32 orbit_radius = 0.0f;
+		f32 orbit_yaw_offset = 0.0f;
+		f32 orbit_pitch_offset = 0.0f;
+		v3f orbit_view_offset = v3f();
+	};
+
+	void applyServerCameraSet(const ServerSetSpec &spec);
+	void applyServerCameraClear(f32 ease_time = 0.0f, ServerEaseType ease_type = ServerEaseType::linear);
+	void applyServerCameraShake(f32 intensity_deg, f32 duration, bool decay);
+	bool isServerInputLocked() const { return m_server_input_locked; }
+	bool isServerCameraActive() const { return m_server_camera_active; }
+
 	Camera(MapDrawControl &draw_control, Client *client, RenderingEngine *rendering_engine);
 	~Camera();
 
@@ -182,6 +226,13 @@ public:
 	inline void addArmInertia(f32 player_yaw);
 
 private:
+	static f32 easeT(f32 t, ServerEaseType type);
+	void updateServerCameraOverride(f32 dtime, v3f *pos, v3f *dir, v3f *up);
+	void applyServerTransition(f32 dtime, const v3f &to_pos, const v3f &to_dir,
+			const v3f &to_up, v3f *out_pos, v3f *out_dir, v3f *out_up);
+	void applyShake(f32 dtime, v3f *dir, v3f *up);
+	void updateCameraNodeTransform(const v3f &pos, const v3f &dir, const v3f &up);
+
 	// Use getFrustumCuller().
 	// This helper just exists to decrease the header's number of includes.
 	std::array<core::plane3d<f32>, 4> getFrustumCullPlanes() const;
@@ -251,6 +302,29 @@ private:
 	ItemStack m_wield_item_next;
 
 	CameraMode m_camera_mode;
+
+	// Server-controlled camera state
+	bool m_server_camera_active = false;
+	ServerSetSpec m_server_spec;
+	bool m_server_input_locked = false;
+
+	struct {
+		bool active = false;
+		f32 duration = 0.0f;
+		f32 elapsed = 0.0f;
+		ServerEaseType type = ServerEaseType::linear;
+		v3f from_pos;
+		v3f from_dir;
+		v3f from_up;
+	} m_server_transition;
+
+	struct {
+		bool active = false;
+		f32 intensity_deg = 0.0f;
+		f32 duration = 0.0f;
+		f32 elapsed = 0.0f;
+		bool decay = true;
+	} m_server_shake;
 
 	f32 m_cache_view_bobbing_amount;
 	bool m_arm_inertia;
