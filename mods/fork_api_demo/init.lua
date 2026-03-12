@@ -24,6 +24,104 @@ local function has_sky_keyframes_api()
 	return type(minetest.set_sky_keyframes) == "function"
 end
 
+local freecam = {}
+
+local function freecam_set_physics(player, enabled)
+	if not player or not player:is_player() then
+		return
+	end
+	if enabled then
+		player:set_physics_override({ speed = 0, jump = 0, gravity = 0 })
+	else
+		player:set_physics_override({ speed = 1, jump = 1, gravity = 1 })
+	end
+end
+
+local function freecam_stop(player)
+	if not player then
+		return
+	end
+	local name = player:get_player_name()
+	if not name then
+		return
+	end
+	freecam[name] = nil
+	freecam_set_physics(player, false)
+	if has_camera_api() then
+		minetest.camera.clear(player, { ease = { time = 0.20, type = "in_cubic" } })
+	end
+end
+
+minetest.register_on_leaveplayer(function(player)
+	freecam_stop(player)
+end)
+
+minetest.register_globalstep(function(dtime)
+	if not has_camera_api() then
+		return
+	end
+	for name, st in pairs(freecam) do
+		local player = minetest.get_player_by_name(name)
+		if not player then
+			freecam[name] = nil
+			break
+		end
+
+		local yaw = player:get_look_horizontal() or 0
+		local pitch = player:get_look_vertical() or 0
+
+		local ctrl = player:get_player_control() or {}
+		local speed = 8.0
+		if ctrl.aux1 then
+			speed = speed * 2.5
+		end
+
+		local fwd = minetest.yaw_to_dir(yaw)
+		fwd.y = 0
+		fwd = vector.normalize(fwd)
+		local right = vector.cross(vector.new(0, 1, 0), fwd)
+		right.y = 0
+		right = vector.normalize(right)
+
+		local move = vector.new(0, 0, 0)
+		if ctrl.up then
+			move = vector.add(move, fwd)
+		end
+		if ctrl.down then
+			move = vector.subtract(move, fwd)
+		end
+		if ctrl.right then
+			move = vector.add(move, right)
+		end
+		if ctrl.left then
+			move = vector.subtract(move, right)
+		end
+		if ctrl.jump then
+			move.y = move.y + 1
+		end
+		if ctrl.sneak then
+			move.y = move.y - 1
+		end
+		if vector.length(move) > 0 then
+			st.pos = vector.add(st.pos, vector.multiply(vector.normalize(move), speed * dtime))
+		end
+
+		st.send_acc = (st.send_acc or 0) + dtime
+		if st.send_acc >= 0.05 then
+			st.send_acc = 0
+			minetest.camera.set(player, "free", {
+				pos = st.pos,
+				rot = {
+					x = math.deg(pitch),
+					y = math.deg(yaw),
+					z = 0,
+				},
+				lock_input = false,
+			})
+		end
+	end
+end)
+
 local function add_muzzle_like_spawner(attached_obj)
 	return minetest.add_particlespawner({
 		amount = 40,
@@ -103,15 +201,18 @@ minetest.register_chatcommand("fork_api", {
 				msg(name, "camera API missing")
 				return true
 			end
-			local pos = vector.add(player:get_pos(), vector.new(0, 2.0, 0))
-			local facing = vector.add(player:get_pos(), vector.new(0, 1.2, 0))
+			freecam_set_physics(player, true)
+			local yaw = player:get_look_horizontal() or 0
+			local dir = minetest.yaw_to_dir(yaw)
+			local pos = vector.add(player:get_pos(), vector.new(0, 1.5, 0))
+			pos = vector.subtract(pos, vector.multiply(dir, 3.0))
+			freecam[name] = { pos = pos, send_acc = 0 }
 			minetest.camera.set(player, "free", {
 				pos = pos,
-				facing = facing,
 				ease = { time = 0.35, type = "out_cubic" },
-				lock_input = true,
+				lock_input = false,
 			})
-			msg(name, "camera free")
+			msg(name, "freecam on (WASD + jump/sneak, look to rotate, aux1 = faster)")
 			return true
 		end
 
@@ -120,7 +221,7 @@ minetest.register_chatcommand("fork_api", {
 				msg(name, "camera API missing")
 				return true
 			end
-			minetest.camera.clear(player, { ease = { time = 0.20, type = "in_cubic" } })
+			freecam_stop(player)
 			msg(name, "camera clear")
 			return true
 		end
@@ -226,4 +327,3 @@ minetest.register_chatcommand("fork_api", {
 		return true
 	end,
 })
-
