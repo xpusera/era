@@ -9,6 +9,7 @@
 #include "serveractiveobject.h"
 #include <quaternion.h>
 #include "util/numeric.h"
+#include <optional>
 
 class UnitSAO : public ServerActiveObject
 {
@@ -86,6 +87,16 @@ public:
 	void notifyObjectPropertiesModified() override;
 	void sendOutdatedData();
 
+	// Runtime tint
+	void setColorTint(const std::optional<video::SColor> &tint, float blend_time);
+	std::optional<video::SColor> getColorTint() const { return m_color_tint; }
+
+	// Render variants
+	void setTextureVariant(const std::string &variant);
+	void setMeshVariant(const std::string &variant);
+	const std::string &getTextureVariant() const { return m_texture_variant; }
+	const std::string &getMeshVariant() const { return m_mesh_variant; }
+
 	// Update packets
 	std::string generateUpdateAttachmentCommand() const;
 	std::string generateUpdateAnimationSpeedCommand() const;
@@ -95,6 +106,9 @@ public:
 			const v3f &velocity, const v3f &acceleration, const v3f &rotation,
 			bool do_interpolate, bool is_movement_end, f32 update_interval);
 	std::string generateSetPropertiesCommand(const ObjectProperties &prop) const;
+	std::string generateSetColorTintCommand() const;
+	std::string generateSetTextureVariantCommand() const;
+	std::string generateSetMeshVariantCommand() const;
 	static std::string generateUpdateBoneOverrideCommand(
 			const std::string &bone, const BoneOverride &props);
 	void sendPunchCommand();
@@ -160,4 +174,15 @@ private:
 	v3f m_attachment_rotation;
 	bool m_attachment_sent = false;
 	bool m_force_visible = false;
+
+	// Runtime tint
+	std::optional<video::SColor> m_color_tint;
+	float m_color_tint_blend_time = 0.0f;
+	bool m_color_tint_sent = true;
+
+	// Render variants
+	std::string m_texture_variant = "default";
+	std::string m_mesh_variant = "default";
+	bool m_texture_variant_sent = true;
+	bool m_mesh_variant_sent = true;
 };

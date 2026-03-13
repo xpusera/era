@@ -8,6 +8,8 @@
 #include "serverenvironment.h"
 #include "util/serialize.h"
 
+#include <algorithm>
+
 UnitSAO::UnitSAO(ServerEnvironment *env, v3f pos) : ServerActiveObject(env, pos)
 {
 	// Initialize something to armor groups
@@ -156,6 +158,47 @@ void UnitSAO::sendOutdatedData()
 		m_attachment_sent = true;
 		m_messages_out.emplace(getId(), true, generateUpdateAttachmentCommand());
 	}
+
+	if (!m_color_tint_sent) {
+		m_color_tint_sent = true;
+		m_messages_out.emplace(getId(), true, generateSetColorTintCommand());
+	}
+
+	if (!m_texture_variant_sent) {
+		m_texture_variant_sent = true;
+		m_messages_out.emplace(getId(), true, generateSetTextureVariantCommand());
+	}
+
+	if (!m_mesh_variant_sent) {
+		m_mesh_variant_sent = true;
+		m_messages_out.emplace(getId(), true, generateSetMeshVariantCommand());
+	}
+}
+
+void UnitSAO::setColorTint(const std::optional<video::SColor> &tint, float blend_time)
+{
+	blend_time = std::max(0.0f, blend_time);
+	if (m_color_tint == tint && std::abs(m_color_tint_blend_time - blend_time) < 0.0001f)
+		return;
+	m_color_tint = tint;
+	m_color_tint_blend_time = blend_time;
+	m_color_tint_sent = false;
+}
+
+void UnitSAO::setTextureVariant(const std::string &variant)
+{
+	if (m_texture_variant == variant)
+		return;
+	m_texture_variant = variant;
+	m_texture_variant_sent = false;
+}
+
+void UnitSAO::setMeshVariant(const std::string &variant)
+{
+	if (m_mesh_variant == variant)
+		return;
+	m_mesh_variant = variant;
+	m_mesh_variant_sent = false;
 }
 
 void UnitSAO::setAttachment(const object_t new_parent, const std::string &bone, v3f position,
@@ -438,6 +481,38 @@ std::string UnitSAO::generateSetPropertiesCommand(const ObjectProperties &prop) 
 	std::ostringstream os(std::ios::binary);
 	writeU8(os, AO_CMD_SET_PROPERTIES);
 	prop.serialize(os);
+	return os.str();
+}
+
+std::string UnitSAO::generateSetColorTintCommand() const
+{
+	std::ostringstream os(std::ios::binary);
+	writeU8(os, AO_CMD_SET_COLOR_TINT);
+	if (m_color_tint) {
+		writeU8(os, 1);
+		writeARGB8(os, m_color_tint.value());
+		writeF32(os, m_color_tint_blend_time);
+	} else {
+		writeU8(os, 0);
+		writeARGB8(os, video::SColor(0, 255, 255, 255));
+		writeF32(os, m_color_tint_blend_time);
+	}
+	return os.str();
+}
+
+std::string UnitSAO::generateSetTextureVariantCommand() const
+{
+	std::ostringstream os(std::ios::binary);
+	writeU8(os, AO_CMD_SET_TEXTURE_VARIANT);
+	os << serializeString16(m_texture_variant);
+	return os.str();
+}
+
+std::string UnitSAO::generateSetMeshVariantCommand() const
+{
+	std::ostringstream os(std::ios::binary);
+	writeU8(os, AO_CMD_SET_MESH_VARIANT);
+	os << serializeString16(m_mesh_variant);
 	return os.str();
 }
 

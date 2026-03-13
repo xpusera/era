@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "content_cao.h"
+#include <algorithm>
 #include <IBillboardSceneNode.h>
 #include <ICameraSceneNode.h>
 #include <IMeshManipulator.h>
@@ -197,6 +198,21 @@ static void setColorParam(scene::ISceneNode *node, video::SColor color)
 {
 	for (u32 i = 0; i < node->getMaterialCount(); ++i)
 		node->getMaterial(i).ColorParam = color;
+}
+
+static video::SColor apply_tint_to_light(video::SColor light, video::SColor tint)
+{
+	const float a = tint.getAlpha() / 255.0f;
+	auto apply = [a](u8 lc, u8 tc) -> u8 {
+		float factor = (1.0f - a) + a * (tc / 255.0f);
+		float out = (lc / 255.0f) * factor;
+		out = std::clamp(out, 0.0f, 1.0f);
+		return static_cast<u8>(out * 255.0f + 0.5f);
+	};
+	return video::SColor(light.getAlpha(),
+		apply(light.getRed(), tint.getRed()),
+		apply(light.getGreen(), tint.getGreen()),
+		apply(light.getBlue(), tint.getBlue()));
 }
 
 static scene::SMesh *generateNodeMesh(Client *client, MapNode n,
@@ -683,9 +699,10 @@ void GenericCAO::addToScene(ITextureSource *tsrc, scene::ISceneManager *smgr)
 			mat.BackfaceCulling = m_prop.backface_culling;
 		});
 		break;
-	} case OBJECTVISUAL_MESH: {
-		scene::IAnimatedMesh *mesh = m_client->getMesh(m_prop.mesh, true);
-		if (mesh) {
+		} case OBJECTVISUAL_MESH: {
+			const std::string &meshname = m_mesh_variant_override_set ? m_mesh_variant_override : m_prop.mesh;
+			scene::IAnimatedMesh *mesh = m_client->getMesh(meshname, true);
+			if (mesh) {
 			if (!checkMeshNormals(mesh)) {
 				infostream << "GenericCAO: recalculating normals for mesh "
 					<< m_prop.mesh << std::endl;
@@ -725,10 +742,10 @@ void GenericCAO::addToScene(ITextureSource *tsrc, scene::ISceneManager *smgr)
 					++it;
 				}
 			});
-		} else
-			errorstream<<"GenericCAO::addToScene(): Could not load mesh "<<m_prop.mesh<<std::endl;
-		break;
-	}
+			} else
+				errorstream<<"GenericCAO::addToScene(): Could not load mesh "<<meshname<<std::endl;
+			break;
+		}
 	case OBJECTVISUAL_WIELDITEM:
 	case OBJECTVISUAL_ITEM: {
 		ItemStack item;
@@ -873,7 +890,7 @@ void GenericCAO::setNodeLight(const video::SColor &light_color)
 {
 	if (m_prop.visual == OBJECTVISUAL_WIELDITEM || m_prop.visual == OBJECTVISUAL_ITEM) {
 		if (m_wield_meshnode)
-			m_wield_meshnode->setLightColorAndAnimation(light_color,
+			m_wield_meshnode->setLightColorAndAnimation(apply_tint_to_light(light_color, m_tint_current),
 					m_client->getAnimationTime());
 		return;
 	}
@@ -882,7 +899,11 @@ void GenericCAO::setNodeLight(const video::SColor &light_color)
 		auto *node = getSceneNode();
 		if (!node)
 			return;
-		setColorParam(node, light_color);
+		video::SColor final = apply_tint_to_light(light_color, m_tint_current);
+		if (final != m_last_applied_colorparam) {
+			m_last_applied_colorparam = final;
+			setColorParam(node, final);
+		}
 	}
 }
 
@@ -1078,6 +1099,26 @@ void GenericCAO::step(float dtime, ClientEnvironment *env)
 	scene::ISceneNode *node = getSceneNode();
 	if (node)
 		node->setVisible(m_is_visible);
+
+	bool tint_changed = false;
+	if (m_tint_blend_active) {
+		m_tint_blend_t += dtime;
+		float f = m_tint_blend_time > 0.0f ? (m_tint_blend_t / m_tint_blend_time) : 1.0f;
+		f = std::clamp(f, 0.0f, 1.0f);
+		auto lerp = [f](u8 a, u8 b) -> u8 {
+			return static_cast<u8>(a + (b - a) * f);
+		};
+		m_tint_current = video::SColor(
+			lerp(m_tint_from.getAlpha(), m_tint_to.getAlpha()),
+			lerp(m_tint_from.getRed(), m_tint_to.getRed()),
+			lerp(m_tint_from.getGreen(), m_tint_to.getGreen()),
+			lerp(m_tint_from.getBlue(), m_tint_to.getBlue()));
+		tint_changed = true;
+		if (f >= 1.0f)
+			m_tint_blend_active = false;
+	}
+	if (tint_changed)
+		setNodeLight(m_last_light);
 
 	if(getParent() != NULL) // Attachments should be glued to their parent by Irrlicht
 	{
@@ -1287,6 +1328,7 @@ void GenericCAO::updateTextureAnim()
 void GenericCAO::updateTextures(std::string mod)
 {
 	ITextureSource *tsrc = m_client->tsrc();
+	const std::vector<std::string> &textures = m_texture_variant_override_set ? m_texture_variant_override : m_prop.textures;
 
 	m_previous_texture_modifier = m_current_texture_modifier;
 	m_current_texture_modifier = mod;
@@ -1294,8 +1336,8 @@ void GenericCAO::updateTextures(std::string mod)
 	if (m_spritenode) {
 		if (m_prop.visual == OBJECTVISUAL_SPRITE) {
 			std::string texturestring = "no_texture.png";
-			if (!m_prop.textures.empty())
-				texturestring = m_prop.textures[0];
+			if (!textures.empty())
+				texturestring = textures[0];
 			texturestring += mod;
 
 			video::SMaterial &material = m_spritenode->getMaterial(0);
@@ -1308,9 +1350,9 @@ void GenericCAO::updateTextures(std::string mod)
 		if (m_prop.visual == OBJECTVISUAL_MESH) {
 			for (u32 i = 0; i < m_animated_meshnode->getMaterialCount(); ++i) {
 				const auto texture_idx = m_animated_meshnode->getMesh()->getTextureSlot(i);
-				if (texture_idx >= m_prop.textures.size())
+				if (texture_idx >= textures.size())
 					continue;
-				std::string texturestring = m_prop.textures[texture_idx];
+				std::string texturestring = textures[texture_idx];
 				if (texturestring.empty())
 					continue; // Empty texture string means don't modify that material
 				texturestring += mod;
@@ -1330,8 +1372,8 @@ void GenericCAO::updateTextures(std::string mod)
 			for (u32 i = 0; i < 6; ++i)
 			{
 				std::string texturestring = "no_texture.png";
-				if(m_prop.textures.size() > i)
-					texturestring = m_prop.textures[i];
+				if(textures.size() > i)
+					texturestring = textures[i];
 				texturestring += mod;
 
 				// Set material flags and texture
@@ -1343,8 +1385,8 @@ void GenericCAO::updateTextures(std::string mod)
 			scene::IMesh *mesh = m_meshnode->getMesh();
 			{
 				std::string tname = "no_texture.png";
-				if (!m_prop.textures.empty())
-					tname = m_prop.textures[0];
+				if (!textures.empty())
+					tname = textures[0];
 				tname += mod;
 
 				auto &material = m_meshnode->getMaterial(0);
@@ -1352,10 +1394,10 @@ void GenericCAO::updateTextures(std::string mod)
 			}
 			{
 				std::string tname = "no_texture.png";
-				if (m_prop.textures.size() >= 2)
-					tname = m_prop.textures[1];
-				else if (!m_prop.textures.empty())
-					tname = m_prop.textures[0];
+				if (textures.size() >= 2)
+					tname = textures[1];
+				else if (!textures.empty())
+					tname = textures[0];
 				tname += mod;
 
 				auto &material = m_meshnode->getMaterial(1);
@@ -1570,6 +1612,44 @@ void GenericCAO::processMessage(const std::string &data)
 			updateTextures(m_previous_texture_modifier);
 		}
 		updateTextures(mod);
+	} else if (cmd == AO_CMD_SET_COLOR_TINT) {
+		u8 enabled = readU8(is);
+		video::SColor c = readARGB8(is);
+		float blend = readF32(is);
+		if (!enabled)
+			c = video::SColor(0, 255, 255, 255);
+		m_tint_from = m_tint_current;
+		m_tint_to = c;
+		m_tint_blend_time = std::max(0.0f, blend);
+		m_tint_blend_t = 0.0f;
+		m_tint_blend_active = m_tint_blend_time > 0.0f;
+		if (!m_tint_blend_active) {
+			m_tint_current = c;
+			setNodeLight(m_last_light);
+		}
+	} else if (cmd == AO_CMD_SET_TEXTURE_VARIANT) {
+		std::string variant = deSerializeString16(is);
+		auto it = m_prop.texture_variants.find(variant);
+		if (it != m_prop.texture_variants.end()) {
+			m_texture_variant_override = it->second;
+			m_texture_variant_override_set = true;
+		} else {
+			m_texture_variant_override_set = false;
+			m_texture_variant_override.clear();
+		}
+		if (m_reset_textures_timer < 0)
+			updateTextures(m_current_texture_modifier);
+	} else if (cmd == AO_CMD_SET_MESH_VARIANT) {
+		std::string variant = deSerializeString16(is);
+		auto it = m_prop.mesh_variants.find(variant);
+		if (it != m_prop.mesh_variants.end()) {
+			m_mesh_variant_override = it->second;
+			m_mesh_variant_override_set = true;
+		} else {
+			m_mesh_variant_override_set = false;
+			m_mesh_variant_override.clear();
+		}
+		expireVisuals();
 	} else if (cmd == AO_CMD_SET_SPRITE) {
 		v2s16 p = readV2S16(is);
 		int num_frames = readU16(is);

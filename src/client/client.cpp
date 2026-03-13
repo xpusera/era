@@ -1557,6 +1557,13 @@ void Client::sendCameraSpectatorPos(const v3f &pos)
 	Send(&pkt);
 }
 
+void Client::sendParticleSpawnerCollide(u32 spawner_id, const v3f &pos, const v3f &normal)
+{
+	NetworkPacket pkt(TOSERVER_PARTICLESPAWNER_COLLIDE, 4 + 12 + 12);
+	pkt << spawner_id << pos << normal;
+	Send(&pkt);
+}
+
 void Client::removeNode(v3s16 p)
 {
 	std::map<v3s16, MapBlock*> modified_blocks;

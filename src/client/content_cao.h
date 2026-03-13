@@ -95,7 +95,19 @@ private:
 	Nametag *m_nametag = nullptr;
 	MinimapMarker *m_marker = nullptr;
 	bool m_visuals_expired = false;
-	video::SColor m_last_light = video::SColor(0xFFFFFFFF);
+		video::SColor m_last_light = video::SColor(0xFFFFFFFF);
+		video::SColor m_tint_current = video::SColor(0, 255, 255, 255);
+		video::SColor m_tint_from = video::SColor(0, 255, 255, 255);
+		video::SColor m_tint_to = video::SColor(0, 255, 255, 255);
+		float m_tint_blend_time = 0.0f;
+		float m_tint_blend_t = 0.0f;
+		bool m_tint_blend_active = false;
+		video::SColor m_last_applied_colorparam = video::SColor(0xFFFFFFFF);
+
+		bool m_texture_variant_override_set = false;
+		std::vector<std::string> m_texture_variant_override;
+		std::string m_mesh_variant_override;
+		bool m_mesh_variant_override_set = false;
 	bool m_is_visible = false;
 	std::vector<MeshAnimationInfo> m_meshnode_animation;
 

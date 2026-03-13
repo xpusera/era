@@ -360,6 +360,7 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		throw LuaError("particle spawner 'time' must be >= 0");
 
 	int on_spawn_ref = LUA_NOREF;
+	int on_collide_ref = LUA_NOREF;
 	if (lua_istable(L, 1)) {
 		lua_getfield(L, 1, "on_particle_spawn");
 		if (lua_isfunction(L, -1)) {
@@ -373,6 +374,26 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		}
 	}
 
+	if (lua_istable(L, 1)) {
+		lua_getfield(L, 1, "on_particle_collide");
+		if (lua_isfunction(L, -1)) {
+			on_collide_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		} else {
+			if (!lua_isnil(L, -1)) {
+				lua_pop(L, 1);
+				throw LuaError("add_particlespawner: on_particle_collide must be a function or nil");
+			}
+			lua_pop(L, 1);
+		}
+	}
+
+	if (on_spawn_ref != LUA_NOREF && on_collide_ref != LUA_NOREF) {
+		luaL_unref(L, LUA_REGISTRYINDEX, on_collide_ref);
+		throw LuaError("add_particlespawner: on_particle_collide is not supported with on_particle_spawn");
+	}
+
+	p.on_particle_collide = (on_collide_ref != LUA_NOREF);
+
 	u32 id;
 	if (on_spawn_ref != LUA_NOREF) {
 		id = getServer(L)->addScriptedParticleSpawner(p, attached, playername, not_playername,
@@ -383,6 +404,13 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		}
 	} else {
 		id = getServer(L)->addParticleSpawner(p, attached, playername, not_playername);
+		if (id == 0) {
+			if (on_collide_ref != LUA_NOREF)
+				luaL_unref(L, LUA_REGISTRYINDEX, on_collide_ref);
+			throw LuaError("add_particlespawner: failed to create particle spawner");
+		}
+		if (on_collide_ref != LUA_NOREF)
+			getServer(L)->setParticleSpawnerCollideCallback(id, on_collide_ref, "");
 	}
 	lua_pushnumber(L, id);
 

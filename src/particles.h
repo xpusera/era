@@ -346,5 +346,7 @@ struct ParticleSpawnerParameters : CommonParticleParams
 	};
 	std::vector<ColorOverLifetimeKeyframe> color_over_lifetime;
 
+	bool on_particle_collide = false;
+
 	// For historical reasons no (de-)serialization methods here
 };

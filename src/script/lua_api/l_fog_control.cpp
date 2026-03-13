@@ -80,6 +80,7 @@ int ModApiFogControl::l_set_fog(lua_State *L)
 	}
 
 	Server *server = ModApiBase::getServer(L);
+	server->setPlayerFogManualOverride(player->getPeerId(), params.enabled);
 	server->setFog(player, params);
 	return 0;
 }

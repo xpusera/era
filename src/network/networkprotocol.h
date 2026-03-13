@@ -979,13 +979,20 @@ enum ToServerCommand : u16
 			v2f32 max_fs_info
 		*/
 
-		TOSERVER_CAMERA_SPECTATOR_POS = 0x54,
-		/*
-			v3f pos
-		*/
+			TOSERVER_CAMERA_SPECTATOR_POS = 0x54,
+			/*
+				v3f pos
+			*/
 
-		TOSERVER_NUM_MSG_TYPES = 0x55,
-	};
+			TOSERVER_PARTICLESPAWNER_COLLIDE = 0x55,
+			/*
+				u32 spawner_id
+				v3f pos
+				v3f normal
+			*/
+
+			TOSERVER_NUM_MSG_TYPES = 0x56,
+		};
 
 enum AuthMechanism
 {

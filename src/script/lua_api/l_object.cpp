@@ -3,6 +3,7 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "lua_api/l_object.h"
+#include <algorithm>
 #include <cmath>
 #include <lua.h>
 #include "lua_api/l_internal.h"
@@ -23,6 +24,7 @@
 #include "hud_element.h"
 #include "server/luaentity_sao.h"
 #include "server/player_sao.h"
+#include "server/unit_sao.h"
 #include "server/serverinventorymgr.h"
 
 using object_t = ServerActiveObject::object_t;
@@ -1326,6 +1328,95 @@ int ObjectRef::l_get_texture_mod(lua_State *L)
 	std::string mod = entitysao->getTextureMod();
 
 	lua_pushstring(L, mod.c_str());
+	return 1;
+}
+
+// set_color_tint(self, color, blend_time)
+int ObjectRef::l_set_color_tint(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (!sao)
+		return 0;
+	UnitSAO *unit = dynamic_cast<UnitSAO *>(sao);
+	if (!unit)
+		return 0;
+
+	float blend_time = readParam<float>(L, 3, 0.0f);
+	blend_time = std::max(0.0f, blend_time);
+
+	if (lua_isnoneornil(L, 2)) {
+		unit->setColorTint(std::nullopt, blend_time);
+		return 0;
+	}
+
+	video::SColor c(0, 255, 255, 255);
+	if (!read_color(L, 2, &c))
+		throw LuaError("set_color_tint: invalid color");
+	unit->setColorTint(c, blend_time);
+	return 0;
+}
+
+// set_texture_variant(self, variant)
+int ObjectRef::l_set_texture_variant(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (!sao)
+		return 0;
+	UnitSAO *unit = dynamic_cast<UnitSAO *>(sao);
+	if (!unit)
+		return 0;
+	std::string v = readParam<std::string>(L, 2);
+	unit->setTextureVariant(v);
+	return 0;
+}
+
+// set_mesh_variant(self, variant)
+int ObjectRef::l_set_mesh_variant(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (!sao)
+		return 0;
+	UnitSAO *unit = dynamic_cast<UnitSAO *>(sao);
+	if (!unit)
+		return 0;
+	std::string v = readParam<std::string>(L, 2);
+	unit->setMeshVariant(v);
+	return 0;
+}
+
+// get_texture_variant(self)
+int ObjectRef::l_get_texture_variant(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (!sao)
+		return 0;
+	UnitSAO *unit = dynamic_cast<UnitSAO *>(sao);
+	if (!unit)
+		return 0;
+	lua_pushstring(L, unit->getTextureVariant().c_str());
+	return 1;
+}
+
+// get_mesh_variant(self)
+int ObjectRef::l_get_mesh_variant(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (!sao)
+		return 0;
+	UnitSAO *unit = dynamic_cast<UnitSAO *>(sao);
+	if (!unit)
+		return 0;
+	lua_pushstring(L, unit->getMeshVariant().c_str());
 	return 1;
 }
 
@@ -2997,9 +3088,14 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod_aliased(ObjectRef, get_yaw, getyaw),
 	luamethod(ObjectRef, set_rotation),
 	luamethod(ObjectRef, get_rotation),
-	luamethod_aliased(ObjectRef, set_texture_mod, settexturemod),
-	luamethod(ObjectRef, get_texture_mod),
-	luamethod_aliased(ObjectRef, set_sprite, setsprite),
+		luamethod_aliased(ObjectRef, set_texture_mod, settexturemod),
+		luamethod(ObjectRef, get_texture_mod),
+		luamethod(ObjectRef, set_color_tint),
+		luamethod(ObjectRef, set_texture_variant),
+		luamethod(ObjectRef, set_mesh_variant),
+		luamethod(ObjectRef, get_texture_variant),
+		luamethod(ObjectRef, get_mesh_variant),
+		luamethod_aliased(ObjectRef, set_sprite, setsprite),
 	luamethod(ObjectRef, get_entity_name),
 	luamethod(ObjectRef, get_luaentity),
 

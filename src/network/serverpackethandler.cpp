@@ -1841,3 +1841,26 @@ void Server::handleCommand_CameraSpectatorPos(NetworkPacket *pkt)
 	*pkt >> pos;
 	setCameraSpectatorPos(pkt->getPeerId(), pos);
 }
+
+void Server::handleCommand_ParticleSpawnerCollide(NetworkPacket *pkt)
+{
+	u32 spawner_id;
+	v3f pos;
+	v3f normal;
+	*pkt >> spawner_id >> pos >> normal;
+
+	if (!m_script)
+		return;
+
+	auto it = m_particle_spawner_collide_callbacks.find(spawner_id);
+	if (it == m_particle_spawner_collide_callbacks.end())
+		return;
+
+	if (it->second.on_particle_collide_ref <= 0)
+		return;
+
+	if (!m_script->runParticleCollideCallback(it->second.on_particle_collide_ref,
+			pos, normal, it->second.origin_mod)) {
+		unrefParticleSpawnerCollideCallback(spawner_id);
+	}
+}

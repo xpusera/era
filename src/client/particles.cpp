@@ -119,15 +119,39 @@ void Particle::step(float dtime, ClientEnvironment *env)
 	av -= av * (m_p.drag * dtime);
 	m_velocity = av*vecSign(m_velocity) + v3f(m_p.jitter.pickWithin())*dtime;
 
-	if (m_p.collisiondetection) {
-		aabb3f box(v3f(-m_p.size / 2.0f), v3f(m_p.size / 2.0f));
-		v3f p_pos = m_pos * BS;
-		v3f p_velocity = m_velocity * BS;
-		collisionMoveResult r = collisionMoveSimple(env, env->getGameDef(),
-			box, 0.0f, dtime, &p_pos, &p_velocity, m_acceleration * BS, nullptr,
-			m_p.object_collision);
+		if (m_p.collisiondetection) {
+			aabb3f box(v3f(-m_p.size / 2.0f), v3f(m_p.size / 2.0f));
+			v3f p_pos = m_pos * BS;
+			v3f p_velocity = m_velocity * BS;
+			collisionMoveResult r = collisionMoveSimple(env, env->getGameDef(),
+				box, 0.0f, dtime, &p_pos, &p_velocity, m_acceleration * BS, nullptr,
+				m_p.object_collision);
 
-		f32 bounciness = m_p.bounce.pickWithin();
+			if (r.collides && m_parent && m_parent->shouldReportParticleCollide()) {
+				for (const auto &ci : r.collisions) {
+					if (ci.type != COLLISION_NODE)
+						continue;
+					v3f normal(0.0f, 0.0f, 0.0f);
+					switch (ci.axis) {
+						case COLLISION_AXIS_X:
+							normal.X = (ci.old_speed.X > 0.0f) ? -1.0f : 1.0f;
+							break;
+						case COLLISION_AXIS_Y:
+							normal.Y = (ci.old_speed.Y > 0.0f) ? -1.0f : 1.0f;
+							break;
+						case COLLISION_AXIS_Z:
+							normal.Z = (ci.old_speed.Z > 0.0f) ? -1.0f : 1.0f;
+							break;
+						default:
+							break;
+					}
+					env->getGameDef()->sendParticleSpawnerCollide(
+						m_parent->getServerId(), ci.new_pos / BS, normal);
+					break;
+				}
+			}
+
+			f32 bounciness = m_p.bounce.pickWithin();
 		if (r.collides && (m_p.collision_removal || bounciness > 0)) {
 			if (m_p.collision_removal) {
 				// force expiration of the particle
@@ -334,19 +358,21 @@ video::SColor ParticleSpawner::sampleColorOverLifetime(float t) const
 */
 
 ParticleSpawner::ParticleSpawner(
-		LocalPlayer *player,
-		const ParticleSpawnerParameters &params,
-		u16 attached_id,
-		std::vector<ClientParticleTexture> &&texpool,
-		ParticleManager *p_manager
-	) :
+			LocalPlayer *player,
+			u64 id,
+			const ParticleSpawnerParameters &params,
+			u16 attached_id,
+			std::vector<ClientParticleTexture> &&texpool,
+			ParticleManager *p_manager
+		) :
 		m_active(0),
-		m_particlemanager(p_manager),
-		m_time(0.0f),
-		m_player(player),
-		p(params),
-		m_texpool(std::move(texpool)),
-		m_attached_id(attached_id)
+			m_particlemanager(p_manager),
+			m_time(0.0f),
+			m_player(player),
+			m_id(id),
+			p(params),
+			m_texpool(std::move(texpool)),
+			m_attached_id(attached_id)
 {
 	m_spawntimes.reserve(p.amount + 1);
 	for (u16 i = 0; i <= p.amount; i++) {
@@ -894,14 +920,15 @@ void ParticleManager::handleParticleEvent(ClientEvent *event, Client *client,
 				texpool.emplace_back(p.texture, client->tsrc());
 			}
 
-			addParticleSpawner(event->add_particlespawner.id,
-					std::make_unique<ParticleSpawner>(
-						player,
-						p,
-						event->add_particlespawner.attached_id,
-						std::move(texpool),
-						this)
-					);
+				addParticleSpawner(event->add_particlespawner.id,
+						std::make_unique<ParticleSpawner>(
+							player,
+							event->add_particlespawner.id,
+							p,
+							event->add_particlespawner.attached_id,
+							std::move(texpool),
+							this)
+						);
 
 			delete event->add_particlespawner.p;
 			break;

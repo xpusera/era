@@ -129,10 +129,17 @@ class ParticleSpawner
 {
 public:
 	ParticleSpawner(LocalPlayer *player,
+		u64 id,
 		const ParticleSpawnerParameters &params,
 		u16 attached_id,
 		std::vector<ClientParticleTexture> &&texpool,
 		ParticleManager *p_manager);
+
+	bool shouldReportParticleCollide() const
+	{
+		return p.on_particle_collide && m_id <= static_cast<u64>(U32_MAX);
+	}
+	u32 getServerId() const { return static_cast<u32>(m_id); }
 
 	void step(float dtime, ClientEnvironment *env);
 
@@ -153,6 +160,7 @@ private:
 	ParticleManager *m_particlemanager;
 	float m_time;
 	LocalPlayer *m_player;
+	u64 m_id;
 	ParticleSpawnerParameters p;
 	std::vector<ClientParticleTexture> m_texpool;
 	std::vector<float> m_spawntimes;

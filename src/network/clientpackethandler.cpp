@@ -1145,13 +1145,13 @@ void Client::handleCommand_AddParticleSpawner(NetworkPacket* pkt)
 				k.color = video::SColor(readU32(is));
 				p.color_over_lifetime.push_back(k);
 			}
-			std::sort(p.color_over_lifetime.begin(), p.color_over_lifetime.end(),
-					[](const auto &a, const auto &b) { return a.t < b.t; });
+				std::sort(p.color_over_lifetime.begin(), p.color_over_lifetime.end(),
+						[](const auto &a, const auto &b) { return a.t < b.t; });
 
-			//if (!canRead(is))
-			//	break;
-			// Add new code here
-		} while(0);
+				if (!canRead(is))
+					break;
+				p.on_particle_collide = readU8(is) != 0;
+			} while(0);
 
 	if (missing_end_values) {
 		// there's no tweening data to be had, so we need to set the

@@ -245,6 +245,7 @@ public:
 		void handleCommand_HaveMedia(NetworkPacket *pkt);
 		void handleCommand_UpdateClientInfo(NetworkPacket *pkt);
 		void handleCommand_CameraSpectatorPos(NetworkPacket *pkt);
+		void handleCommand_ParticleSpawnerCollide(NetworkPacket *pkt);
 
 	void ProcessData(NetworkPacket *pkt);
 
@@ -305,9 +306,25 @@ public:
 			const std::string &exclude_player);
 
 		u32 addScriptedParticleSpawner(const ParticleSpawnerParameters &p,
-			ServerActiveObject *attached, const std::string &to_player,
-			const std::string &exclude_player, int on_particle_spawn_ref,
-			const std::string &origin_mod);
+				ServerActiveObject *attached, const std::string &to_player,
+				const std::string &exclude_player, int on_particle_spawn_ref,
+				const std::string &origin_mod);
+
+		void setParticleSpawnerCollideCallback(u32 id, int on_particle_collide_ref,
+				const std::string &origin_mod);
+
+		struct BiomeAtmosphereDef {
+			bool fog_enabled = false;
+			u32 fog_color = 0;
+			float fog_start = 0.0f;
+			float fog_end = 1.0f;
+			float fog_blend_time = 0.0f;
+			bool sky_enabled = false;
+			u32 sky_color = 0;
+		};
+
+		void setBiomeAtmosphere(u32 biome_id, const BiomeAtmosphereDef &def);
+		void setPlayerFogManualOverride(session_t peer_id, bool enabled);
 
 	void deleteParticleSpawner(const std::string &playername, u32 id);
 
@@ -855,25 +872,40 @@ private:
 		// [playername] = list of params, empty playername for broadcast
 		std::unordered_map<std::string, std::vector<ParticleParameters>> m_particles_to_send;
 
-		struct ScriptedParticleSpawner {
-			ParticleSpawnerParameters p;
-			u16 attached_id = 0;
-			std::string to_player;
-			std::unordered_set<std::string> exclude_players;
-			float elapsed = 0.0f;
-			std::vector<float> spawntimes;
-			size_t next_spawntime = 0;
-			u32 spawned = 0;
-			int on_particle_spawn_ref = 0;
-			std::string origin_mod;
-		};
+			struct ScriptedParticleSpawner {
+				ParticleSpawnerParameters p;
+				u16 attached_id = 0;
+				std::string to_player;
+				std::unordered_set<std::string> exclude_players;
+				float elapsed = 0.0f;
+				std::vector<float> spawntimes;
+				size_t next_spawntime = 0;
+				u32 spawned = 0;
+				int on_particle_spawn_ref = 0;
+				std::string origin_mod;
+			};
 
-		u32 m_scripted_particle_spawner_id_last_used = 0x80000000u;
-		std::unordered_map<u32, ScriptedParticleSpawner> m_scripted_particle_spawners;
+			struct ParticleSpawnerCollideCallback {
+				int on_particle_collide_ref = 0;
+				std::string origin_mod;
+			};
 
-		void stepScriptedParticleSpawners(float dtime);
-		bool deleteScriptedParticleSpawner(u32 id);
-		bool deleteScriptedParticleSpawnerForPlayer(u32 id, const std::string &playername);
+			u32 m_scripted_particle_spawner_id_last_used = 0x80000000u;
+			std::unordered_map<u32, ScriptedParticleSpawner> m_scripted_particle_spawners;
+			std::unordered_map<u32, ParticleSpawnerCollideCallback> m_particle_spawner_collide_callbacks;
+
+			// Biome atmosphere
+			std::unordered_map<u32, BiomeAtmosphereDef> m_biome_atmospheres;
+			std::unordered_map<session_t, u32> m_biome_atmosphere_last_biome;
+			std::unordered_map<session_t, bool> m_biome_atmosphere_fog_manual_override;
+			float m_biome_atmosphere_timer = 0.0f;
+
+			void stepScriptedParticleSpawners(float dtime);
+			void stepBiomeAtmospheres(float dtime);
+			bool deleteScriptedParticleSpawner(u32 id);
+			bool deleteScriptedParticleSpawnerForPlayer(u32 id, const std::string &playername);
+
+			void unrefParticleSpawnerCollideCallback(u32 id);
 	};
 
 /*

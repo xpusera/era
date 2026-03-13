@@ -16,6 +16,7 @@
 #include "lua_api/l_camera_control.h"
 #include "lua_api/l_fog_control.h"
 #include "lua_api/l_sky_keyframes_control.h"
+#include "lua_api/l_biome_atmosphere_control.h"
 #include "lua_api/l_env.h"
 #include "lua_api/l_inventory.h"
 #include "lua_api/l_item.h"
@@ -160,10 +161,11 @@ void ServerScripting::InitializeModApi(lua_State *L, int top)
 	ModApiRollback::Initialize(L, top);
 	ModApiServer::Initialize(L, top);
 		ModApiUtil::Initialize(L, top);
-			ModApiCameraControl::Initialize(L, top);
-			ModApiFogControl::Initialize(L, top);
-			ModApiSkyKeyframesControl::Initialize(L, top);
-			ModApiHttp::Initialize(L, top);
+				ModApiCameraControl::Initialize(L, top);
+				ModApiFogControl::Initialize(L, top);
+				ModApiSkyKeyframesControl::Initialize(L, top);
+				ModApiBiomeAtmosphereControl::Initialize(L, top);
+				ModApiHttp::Initialize(L, top);
 	ModApiStorage::Initialize(L, top);
 	ModApiChannels::Initialize(L, top);
 	ModApiIPC::Initialize(L, top);
@@ -192,6 +194,13 @@ void ServerScripting::InitializeAsync(lua_State *L, int top)
 }
 
 void ServerScripting::unrefParticleSpawnCallback(int ref)
+{
+	lua_State *L = getStack();
+	if (ref != LUA_NOREF && ref != LUA_REFNIL)
+		luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+void ServerScripting::unrefParticleCollideCallback(int ref)
 {
 	lua_State *L = getStack();
 	if (ref != LUA_NOREF && ref != LUA_REFNIL)
@@ -230,7 +239,7 @@ static void apply_particle_spawn_overrides(lua_State *L, int table_index, Partic
 }
 
 bool ServerScripting::runParticleSpawnCallback(int ref, u32 index, ParticleParameters &pp,
-		const std::string &origin_mod)
+			const std::string &origin_mod)
 {
 	lua_State *L = getStack();
 	int top = lua_gettop(L);
@@ -255,6 +264,46 @@ bool ServerScripting::runParticleSpawnCallback(int ref, u32 index, ParticleParam
 
 	if (lua_istable(L, -1))
 		apply_particle_spawn_overrides(L, -1, pp);
+
+	lua_settop(L, top);
+	return true;
+}
+
+static inline void push_vec3(lua_State *L, const v3f &v)
+{
+	lua_createtable(L, 0, 3);
+	lua_pushnumber(L, v.X);
+	lua_setfield(L, -2, "x");
+	lua_pushnumber(L, v.Y);
+	lua_setfield(L, -2, "y");
+	lua_pushnumber(L, v.Z);
+	lua_setfield(L, -2, "z");
+}
+
+bool ServerScripting::runParticleCollideCallback(int ref, const v3f &pos, const v3f &normal,
+		const std::string &origin_mod)
+{
+	lua_State *L = getStack();
+	int top = lua_gettop(L);
+
+	int error_handler = PUSH_ERROR_HANDLER(L);
+	if (!origin_mod.empty())
+		setOriginDirect(origin_mod.c_str());
+	else
+		setOriginDirect(nullptr);
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+	push_vec3(L, pos);
+	push_vec3(L, normal);
+	int result = lua_pcall(L, 2, 0, error_handler);
+	if (result != 0) {
+		try {
+			scriptError(result, "on_particle_collide");
+		} catch (...) {
+			lua_settop(L, top);
+			return false;
+		}
+	}
 
 	lua_settop(L, top);
 	return true;

@@ -236,9 +236,10 @@ public:
 	void sendDamage(u16 damage);
 	void sendRespawnLegacy();
 	void sendReady();
-		void sendHaveMedia(const std::vector<u32> &tokens);
-		void sendUpdateClientInfo(const ClientDynamicInfo &info);
-		void sendCameraSpectatorPos(const v3f &pos);
+			void sendHaveMedia(const std::vector<u32> &tokens);
+			void sendUpdateClientInfo(const ClientDynamicInfo &info);
+			void sendCameraSpectatorPos(const v3f &pos);
+			void sendParticleSpawnerCollide(u32 spawner_id, const v3f &pos, const v3f &normal);
 
 	ClientEnvironment& getEnv() { return m_env; }
 	ITextureSource *tsrc() { return getTextureSource(); }

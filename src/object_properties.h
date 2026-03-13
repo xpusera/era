@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include "irrlichttypes_bloated.h"
 #include <iostream>
 #include <vector>
@@ -34,6 +35,8 @@ struct ObjectProperties
 
 	std::vector<std::string> textures;
 	std::vector<video::SColor> colors; // Currently unused
+	std::unordered_map<std::string, std::vector<std::string>> texture_variants;
+	std::unordered_map<std::string, std::string> mesh_variants;
 	// Values are BS=1
 	aabb3f collisionbox = aabb3f(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f);
 	// Values are BS=1

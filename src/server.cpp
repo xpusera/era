@@ -740,9 +740,10 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 
 		m_env->reportMaxLagEstimate(max_lag);
 
-		// Step environment
-		m_env->step(dtime);
-	}
+			// Step environment
+			m_env->step(dtime);
+			stepBiomeAtmospheres(dtime);
+		}
 
 	static const float map_timer_and_unload_dtime = 2.92;
 	if(m_map_timer_and_unload_interval.step(dtime, map_timer_and_unload_dtime))
@@ -1856,6 +1857,7 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
 				writeF32(os, k.t);
 				writeU32(os, k.color.color);
 			}
+			writeU8(os, p.on_particle_collide ? 1 : 0);
 
 			pkt.putRawString(os.str());
 		}
@@ -3821,6 +3823,103 @@ void Server::setSkyKeyframes(RemotePlayer *player, const SkyKeyframesParams &par
 	SendSetSkyKeyframes(player->getPeerId(), params);
 }
 
+void Server::setBiomeAtmosphere(u32 biome_id, const BiomeAtmosphereDef &def)
+{
+	if (biome_id == 0)
+		return;
+	m_biome_atmospheres[biome_id] = def;
+}
+
+void Server::setPlayerFogManualOverride(session_t peer_id, bool enabled)
+{
+	if (peer_id == PEER_ID_INEXISTENT)
+		return;
+	if (enabled)
+		m_biome_atmosphere_fog_manual_override[peer_id] = true;
+	else
+		m_biome_atmosphere_fog_manual_override.erase(peer_id);
+}
+
+void Server::stepBiomeAtmospheres(float dtime)
+{
+	m_biome_atmosphere_timer += dtime;
+	if (m_biome_atmosphere_timer < 0.5f)
+		return;
+	m_biome_atmosphere_timer = 0.0f;
+
+	if (!m_env || !m_emerge)
+		return;
+
+	const BiomeGen *biomegen = m_emerge->getBiomeGen();
+	if (!biomegen)
+		return;
+
+	for (RemotePlayer *player : m_env->getPlayers()) {
+		if (!player)
+			continue;
+		session_t peer_id = player->getPeerId();
+		if (peer_id == PEER_ID_INEXISTENT)
+			continue;
+
+		PlayerSAO *psao = player->getPlayerSAO();
+		if (!psao)
+			continue;
+
+		v3s16 ipos = floatToInt(psao->getBasePosition(), BS);
+		const Biome *biome = biomegen->calcBiomeAtPoint(ipos);
+		u32 biome_id = biome ? biome->index : 0;
+
+		u32 prev_biome = 0;
+		if (auto it = m_biome_atmosphere_last_biome.find(peer_id);
+				it != m_biome_atmosphere_last_biome.end()) {
+			prev_biome = it->second;
+			if (prev_biome == biome_id)
+				continue;
+		}
+		m_biome_atmosphere_last_biome[peer_id] = biome_id;
+
+		auto prev_def_it = prev_biome ? m_biome_atmospheres.find(prev_biome) : m_biome_atmospheres.end();
+		auto new_def_it = biome_id ? m_biome_atmospheres.find(biome_id) : m_biome_atmospheres.end();
+		const BiomeAtmosphereDef *prev_def = prev_def_it != m_biome_atmospheres.end() ? &prev_def_it->second : nullptr;
+		const BiomeAtmosphereDef *new_def = new_def_it != m_biome_atmospheres.end() ? &new_def_it->second : nullptr;
+
+		const bool fog_override = m_biome_atmosphere_fog_manual_override.find(peer_id)
+				!= m_biome_atmosphere_fog_manual_override.end();
+
+		if (!fog_override) {
+			FogControlParams fog;
+			fog.enabled = false;
+			fog.blend_time = prev_def ? prev_def->fog_blend_time : 0.0f;
+			if (new_def && new_def->fog_enabled) {
+				fog.enabled = true;
+				fog.base.color = video::SColor(new_def->fog_color);
+				fog.base.fog_start = rangelim(new_def->fog_start, 0.0f, 1.0f);
+				fog.base.fog_end = rangelim(new_def->fog_end, fog.base.fog_start, 1.0f);
+				fog.blend_time = std::max(0.0f, new_def->fog_blend_time);
+			}
+			setFog(player, fog);
+		}
+
+		if (new_def && new_def->sky_enabled) {
+			SkyKeyframesParams sky;
+			sky.enabled = true;
+			sky.interpolation = SkyKeyframeInterpolation::Linear;
+			sky.keyframes.clear();
+			SkyKeyframe k;
+			k.time = 0.0f;
+			k.sky = video::SColor(new_def->sky_color);
+			k.fog = video::SColor(new_def->sky_color);
+			k.ambient = video::SColor(new_def->sky_color);
+			sky.keyframes.push_back(k);
+			setSkyKeyframes(player, sky);
+		} else if (prev_def && prev_def->sky_enabled) {
+			SkyKeyframesParams sky;
+			sky.enabled = false;
+			setSkyKeyframes(player, sky);
+		}
+	}
+}
+
 void Server::setSun(RemotePlayer *player, const SunParams &params)
 {
 	sanity_check(player);
@@ -3879,17 +3978,41 @@ void Server::spawnParticle(const std::string &playername,
 	m_particles_to_send[playername].push_back(p);
 }
 
-	bool Server::deleteScriptedParticleSpawner(u32 id)
-	{
-		auto it = m_scripted_particle_spawners.find(id);
-		if (it == m_scripted_particle_spawners.end())
-			return false;
-		if (m_script)
-			m_script->unrefParticleSpawnCallback(it->second.on_particle_spawn_ref);
+		bool Server::deleteScriptedParticleSpawner(u32 id)
+		{
+			auto it = m_scripted_particle_spawners.find(id);
+			if (it == m_scripted_particle_spawners.end())
+				return false;
+			if (m_script)
+				m_script->unrefParticleSpawnCallback(it->second.on_particle_spawn_ref);
 
-		m_scripted_particle_spawners.erase(it);
-		return true;
-	}
+			m_scripted_particle_spawners.erase(it);
+			return true;
+		}
+
+		void Server::setParticleSpawnerCollideCallback(u32 id, int on_particle_collide_ref,
+				const std::string &origin_mod)
+		{
+			if (id == 0)
+				return;
+			if (on_particle_collide_ref <= 0)
+				return;
+			auto &slot = m_particle_spawner_collide_callbacks[id];
+			if (slot.on_particle_collide_ref > 0 && m_script)
+				m_script->unrefParticleCollideCallback(slot.on_particle_collide_ref);
+			slot.on_particle_collide_ref = on_particle_collide_ref;
+			slot.origin_mod = origin_mod;
+		}
+
+		void Server::unrefParticleSpawnerCollideCallback(u32 id)
+		{
+			auto it = m_particle_spawner_collide_callbacks.find(id);
+			if (it == m_particle_spawner_collide_callbacks.end())
+				return;
+			if (m_script)
+				m_script->unrefParticleCollideCallback(it->second.on_particle_collide_ref);
+			m_particle_spawner_collide_callbacks.erase(it);
+		}
 
 bool Server::deleteScriptedParticleSpawnerForPlayer(u32 id, const std::string &playername)
 {
@@ -4181,6 +4304,8 @@ void Server::deleteParticleSpawner(const std::string &playername, u32 id)
 {
 	if (!m_env)
 		throw ServerError("Can't delete particle spawners during initialisation!");
+
+	unrefParticleSpawnerCollideCallback(id);
 
 	if (m_scripted_particle_spawners.find(id) != m_scripted_particle_spawners.end()) {
 		if (playername.empty()) {

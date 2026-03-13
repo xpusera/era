@@ -3,6 +3,7 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #pragma once
+#include "irrlichttypes.h"
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_entity.h"
 #include "cpp_api/s_env.h"
@@ -36,11 +37,15 @@ class ServerScripting:
 		public ScriptApiSecurity
 {
 public:
-	ServerScripting(Server* server);
+		ServerScripting(Server* server);
 
-	void unrefParticleSpawnCallback(int ref);
-	bool runParticleSpawnCallback(int ref, u32 index, ParticleParameters &pp,
-			const std::string &origin_mod);
+		void unrefParticleSpawnCallback(int ref);
+		bool runParticleSpawnCallback(int ref, u32 index, ParticleParameters &pp,
+				const std::string &origin_mod);
+
+		void unrefParticleCollideCallback(int ref);
+		bool runParticleCollideCallback(int ref, const v3f &pos, const v3f &normal,
+				const std::string &origin_mod);
 
 	void loadBuiltin();
 	// use ScriptApiBase::loadMod() to load mods

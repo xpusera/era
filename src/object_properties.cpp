@@ -97,7 +97,7 @@ static inline auto tie(const ObjectProperties &o)
 {
 	// Make sure to add new members to this list!
 	return std::tie(
-	o.textures, o.colors, o.collisionbox, o.selectionbox, o.visual, o.mesh,
+	o.textures, o.colors, o.texture_variants, o.mesh_variants, o.collisionbox, o.selectionbox, o.visual, o.mesh,
 	o.damage_texture_modifier, o.nametag, o.infotext, o.wield_item, o.visual_size,
 	o.nametag_color, o.nametag_bgcolor, o.nametag_fontsize, o.spritediv,
 	o.initial_sprite_basepos,
@@ -219,6 +219,19 @@ void ObjectProperties::serialize(std::ostream &os) const
 
 	// Add stuff only at the bottom.
 	// Never remove anything, because we don't want new versions of this!
+	writeU8(os, 1); // variants_present
+	writeU16(os, texture_variants.size());
+	for (const auto &it : texture_variants) {
+		os << serializeString16(it.first);
+		writeU16(os, it.second.size());
+		for (const auto &tex : it.second)
+			os << serializeString16(tex);
+	}
+	writeU16(os, mesh_variants.size());
+	for (const auto &it : mesh_variants) {
+		os << serializeString16(it.first);
+		os << serializeString16(it.second);
+	}
 }
 
 void ObjectProperties::deSerialize(std::istream &is)
@@ -319,7 +332,29 @@ void ObjectProperties::deSerialize(std::istream &is)
 		nametag_fontsize = std::nullopt;
 	nametag_scale_z = readU8(is);
 
-	//if (!canRead(is))
-	//	return;
-	// Add new code here
+	if (!canRead(is))
+		return;
+
+	u8 variants_present = readU8(is);
+	if (!variants_present)
+		return;
+
+	texture_variants.clear();
+	mesh_variants.clear();
+	u32 tv_count = readU16(is);
+	for (u32 i = 0; i < tv_count; i++) {
+		std::string key = deSerializeString16(is);
+		u32 texcount = readU16(is);
+		auto &vec = texture_variants[key];
+		vec.clear();
+		vec.reserve(texcount);
+		for (u32 j = 0; j < texcount; j++)
+			vec.push_back(deSerializeString16(is));
+	}
+	u32 mv_count = readU16(is);
+	for (u32 i = 0; i < mv_count; i++) {
+		std::string key = deSerializeString16(is);
+		std::string meshv = deSerializeString16(is);
+		mesh_variants[key] = meshv;
+	}
 }

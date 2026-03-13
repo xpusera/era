@@ -420,6 +420,37 @@ void read_object_properties(lua_State *L, int index,
 	}
 	lua_pop(L, 1);
 
+	lua_getfield(L, -1, "texture_variants");
+	if (lua_istable(L, -1)) {
+		int table = lua_gettop(L);
+		prop->texture_variants.clear();
+		for (lua_pushnil(L); lua_next(L, table); lua_pop(L, 1)) {
+			if (!lua_isstring(L, -2) || !lua_istable(L, -1))
+				continue;
+			std::string key = lua_tostring(L, -2);
+			auto &vec = prop->texture_variants[key];
+			vec.clear();
+			int subt = lua_gettop(L);
+			for (lua_pushnil(L); lua_next(L, subt); lua_pop(L, 1)) {
+				if (lua_isstring(L, -1))
+					vec.emplace_back(lua_tostring(L, -1));
+			}
+		}
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, -1, "mesh_variants");
+	if (lua_istable(L, -1)) {
+		int table = lua_gettop(L);
+		prop->mesh_variants.clear();
+		for (lua_pushnil(L); lua_next(L, table); lua_pop(L, 1)) {
+			if (!lua_isstring(L, -2) || !lua_isstring(L, -1))
+				continue;
+			prop->mesh_variants[lua_tostring(L, -2)] = lua_tostring(L, -1);
+		}
+	}
+	lua_pop(L, 1);
+
 	lua_getfield(L, -1, "colors");
 	if (lua_istable(L, -1)) {
 		int table = lua_gettop(L);

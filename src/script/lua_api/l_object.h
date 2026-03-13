@@ -210,6 +210,21 @@ private:
 	// l_get_texture_mod(self)
 	static int l_get_texture_mod(lua_State *L);
 
+	// set_color_tint(self, color, blend_time)
+	static int l_set_color_tint(lua_State *L);
+
+	// set_texture_variant(self, variant)
+	static int l_set_texture_variant(lua_State *L);
+
+	// set_mesh_variant(self, variant)
+	static int l_set_mesh_variant(lua_State *L);
+
+	// get_texture_variant(self)
+	static int l_get_texture_variant(lua_State *L);
+
+	// get_mesh_variant(self)
+	static int l_get_mesh_variant(lua_State *L);
+
 	// set_sprite(self, start_frame, num_frames, framelength, select_x_by_camera)
 	static int l_set_sprite(lua_State *L);
 
