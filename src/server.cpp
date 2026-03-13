@@ -1790,11 +1790,11 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
 		p.acc.start.legacySerialize(os);
 		p.exptime.start.legacySerialize(os);
 		p.size.start.legacySerialize(os);
+		p.drag.start.legacySerialize(os);
+		p.jitter.start.legacySerialize(os);
+		p.bounce.start.legacySerialize(os);
 	}
 
-	writeV3F32(os, p.drag);
-	p.jitter.legacySerialize(os);
-	p.bounce.legacySerialize(os);
 	pkt.putRawString(os.str());
 	pkt << p.collisiondetection;
 
