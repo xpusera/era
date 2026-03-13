@@ -451,16 +451,16 @@ public:
 		void SendPlayerFov(session_t peer_id);
 		void SendCamera(session_t peer_id, Player *player);
 		void SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_time,
-			u8 ease_type, bool lock_input);
+			u8 ease_type, bool lock_move, bool lock_look);
 		void SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
-			bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient);
+			bool lock_move, bool lock_look, const v3f &pos, u8 orient_type, const v3f &orient);
 		void SendCameraControlSetBodyOffset(session_t peer_id, f32 ease_time, u8 ease_type,
-			bool lock_input, const v3f &pos_offset, const v3f &look_offset_deg);
+			bool lock_move, bool lock_look, const v3f &pos_offset, const v3f &look_offset_deg);
 		void SendCameraControlSetSpectator(session_t peer_id, f32 ease_time, u8 ease_type,
-			bool lock_input, bool has_pos, const v3f &pos,
+			bool lock_move, bool lock_look, bool has_pos, const v3f &pos,
 			f32 speed, f32 sprint_multiplier, bool vertical);
 		void SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
-			bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
+			bool lock_move, bool lock_look, u8 target_type, const v3f &target_pos, u16 target_object_id,
 			f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset);
 		void SendCameraControlClear(session_t peer_id, f32 ease_time, u8 ease_type);
 		void SendCameraControlShake(session_t peer_id, f32 intensity, f32 duration, bool decay);

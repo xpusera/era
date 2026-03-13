@@ -269,7 +269,8 @@ void Camera::applyServerCameraSet(const ServerSetSpec &spec)
 {
 	m_server_camera_active = true;
 	m_server_spec = spec;
-	m_server_input_locked = spec.lock_input;
+	m_server_move_locked = spec.lock_move;
+	m_server_look_locked = spec.lock_look;
 
 	m_server_transition.active = spec.ease_time > 0.0f;
 	m_server_transition.duration = std::max(spec.ease_time, 0.0f);
@@ -309,7 +310,8 @@ void Camera::applyServerCameraSet(const ServerSetSpec &spec)
 void Camera::applyServerCameraClear(f32 ease_time, ServerEaseType ease_type)
 {
 	m_server_camera_active = false;
-	m_server_input_locked = false;
+	m_server_move_locked = false;
+	m_server_look_locked = false;
 
 	m_server_transition.active = ease_time > 0.0f;
 	m_server_transition.duration = std::max(ease_time, 0.0f);

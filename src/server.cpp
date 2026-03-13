@@ -2098,44 +2098,44 @@ void Server::SendCamera(session_t peer_id, Player *player)
 }
 
 void Server::SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_time,
-	u8 ease_type, bool lock_input)
+	u8 ease_type, bool lock_move, bool lock_look)
 {
-	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1, peer_id);
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1, peer_id);
 	const u8 type = 0;
-	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+	pkt << type << preset << ease_time << ease_type << (u8)(lock_move ? 1 : 0) << (u8)(lock_look ? 1 : 0);
 	Send(&pkt);
 }
 
 	void Server::SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
-		bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient)
+		bool lock_move, bool lock_look, const v3f &pos, u8 orient_type, const v3f &orient)
 	{
-		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 1 + 12, peer_id);
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + 12 + 1 + 12, peer_id);
 		const u8 type = 0;
 		const u8 preset = 3;
-		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_move ? 1 : 0) << (u8)(lock_look ? 1 : 0);
 		pkt << pos << orient_type << orient;
 		Send(&pkt);
 	}
 
 	void Server::SendCameraControlSetBodyOffset(session_t peer_id, f32 ease_time, u8 ease_type,
-		bool lock_input, const v3f &pos_offset, const v3f &look_offset_deg)
+		bool lock_move, bool lock_look, const v3f &pos_offset, const v3f &look_offset_deg)
 	{
-		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 12, peer_id);
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + 12 + 12, peer_id);
 		const u8 type = 0;
 		const u8 preset = 5;
-		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_move ? 1 : 0) << (u8)(lock_look ? 1 : 0);
 		pkt << pos_offset << look_offset_deg;
 		Send(&pkt);
 	}
 
 	void Server::SendCameraControlSetSpectator(session_t peer_id, f32 ease_time, u8 ease_type,
-		bool lock_input, bool has_pos, const v3f &pos, f32 speed, f32 sprint_multiplier,
+		bool lock_move, bool lock_look, bool has_pos, const v3f &pos, f32 speed, f32 sprint_multiplier,
 		bool vertical)
 	{
-		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + 12 + 4 + 4 + 1, peer_id);
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + 1 + 12 + 4 + 4 + 1, peer_id);
 		const u8 type = 0;
 		const u8 preset = 6;
-		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_move ? 1 : 0) << (u8)(lock_look ? 1 : 0);
 		pkt << (u8)(has_pos ? 1 : 0);
 		if (has_pos)
 			pkt << pos;
@@ -2144,13 +2144,13 @@ void Server::SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_t
 	}
 
 void Server::SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
-	bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
+	bool lock_move, bool lock_look, u8 target_type, const v3f &target_pos, u16 target_object_id,
 	f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset)
 {
 	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1, peer_id);
 	const u8 type = 0;
 	const u8 preset = 4;
-	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+	pkt << type << preset << ease_time << ease_type << (u8)(lock_move ? 1 : 0) << (u8)(lock_look ? 1 : 0);
 	pkt << target_type;
 	if (target_type == 0)
 		pkt << target_pos;

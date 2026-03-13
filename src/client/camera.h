@@ -83,7 +83,8 @@ public:
 			ServerPreset preset = ServerPreset::first_person;
 			f32 ease_time = 0.0f;
 			ServerEaseType ease_type = ServerEaseType::linear;
-			bool lock_input = false;
+			bool lock_move = false;
+			bool lock_look = false;
 
 		// free
 		v3f free_pos = v3f();
@@ -114,7 +115,8 @@ public:
 	void applyServerCameraSet(const ServerSetSpec &spec);
 	void applyServerCameraClear(f32 ease_time = 0.0f, ServerEaseType ease_type = ServerEaseType::linear);
 	void applyServerCameraShake(f32 intensity_deg, f32 duration, bool decay);
-		bool isServerInputLocked() const { return m_server_input_locked; }
+		bool isServerMoveLocked() const { return m_server_move_locked; }
+		bool isServerLookLocked() const { return m_server_look_locked; }
 		bool isServerCameraActive() const { return m_server_camera_active; }
 		bool isServerSpectatorActive() const { return m_server_camera_active && m_server_spec.preset == ServerPreset::spectator; }
 		bool isServerBodyOffsetActive() const { return m_server_camera_active && m_server_spec.preset == ServerPreset::body_offset; }
@@ -329,7 +331,8 @@ private:
 		// Server-controlled camera state
 		bool m_server_camera_active = false;
 		ServerSetSpec m_server_spec;
-		bool m_server_input_locked = false;
+		bool m_server_move_locked = false;
+		bool m_server_look_locked = false;
 
 		// Last user camera yaw/pitch (from Game), used by spectator.
 		f32 m_user_yaw = 0.0f;

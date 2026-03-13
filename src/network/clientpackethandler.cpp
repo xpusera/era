@@ -1686,14 +1686,16 @@ void Client::handleCommand_CameraControl(NetworkPacket *pkt)
 		u8 preset;
 		f32 ease_time;
 		u8 ease_type;
-		u8 lock_input;
-		*pkt >> preset >> ease_time >> ease_type >> lock_input;
+		u8 lock_move;
+		u8 lock_look;
+		*pkt >> preset >> ease_time >> ease_type >> lock_move >> lock_look;
 
 		Camera::ServerSetSpec spec;
 		spec.preset = static_cast<Camera::ServerPreset>(preset);
 		spec.ease_time = ease_time;
 		spec.ease_type = static_cast<Camera::ServerEaseType>(ease_type);
-		spec.lock_input = !!lock_input;
+		spec.lock_move = !!lock_move;
+		spec.lock_look = !!lock_look;
 
 			if (spec.preset == Camera::ServerPreset::free) {
 				v3f pos, orient;

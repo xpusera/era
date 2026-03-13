@@ -2130,27 +2130,16 @@ void Game::updatePlayerControl(const CameraOrientation &cam, float dtime)
 			control.aux1 = control.aux1 ^ true;
 		}
 
-			if (camera->isServerInputLocked()) {
+			if (camera->isServerMoveLocked()) {
 				control.direction_keys = 0;
 				control.movement_speed = 0.0f;
 				control.movement_direction = 0.0f;
 				control.jump = false;
 				control.aux1 = false;
 				control.sneak = false;
-				control.zoom = false;
-				control.dig = false;
-				control.place = false;
-				control.pitch = player->getPitch();
-				control.yaw = player->getYaw();
 			}
 
-			if (camera->isServerSpectatorActive()) {
-				control.direction_keys = 0;
-				control.movement_speed = 0.0f;
-				control.movement_direction = 0.0f;
-				control.jump = false;
-				control.aux1 = false;
-				control.sneak = false;
+			if (camera->isServerLookLocked()) {
 				control.zoom = false;
 				control.dig = false;
 				control.place = false;

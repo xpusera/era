@@ -17,7 +17,9 @@ Server-driven per-player camera control, synced to the client.
 - `opts`: table (preset-specific)
   - `ease`: optional `{ time = number, type = string }`
     - `type`: `"linear" | "in_cubic" | "out_cubic" | "in_out_cubic" | "out_back"`
-  - `lock_input`: optional boolean (default `false`)
+  - `lock_input`: optional boolean (default `false`). Locks both movement and camera.
+  - `lock_move`: optional boolean (default `false`). Locks player movement only.
+  - `lock_look`: optional boolean (default `false`). Locks camera look/pitch/yaw only.
   - `fov`: optional number (degrees). For `first_person`/`third_person` presets.
 
 `core.camera.clear(player, opts?)`

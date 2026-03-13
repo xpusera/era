@@ -101,14 +101,23 @@ int ModApiCameraControl::l_set(lua_State *L)
 
 	f32 ease_time = 0.0f;
 		u8 ease_type = 0;
-		bool lock_input = false;
+		bool lock_move = false;
+		bool lock_look = false;
 
 		if (lua_istable(L, 3)) {
 		lua_getfield(L, 3, "ease");
 		ease_time = parseEaseTime(L, -1);
 		ease_type = parseEaseType(L, -1);
 		lua_pop(L, 1);
-			lock_input = getboolfield_default(L, 3, "lock_input", false);
+
+		lua_getfield(L, 3, "lock_input");
+		if (!lua_isnil(L, -1)) {
+			lock_move = lock_look = lua_toboolean(L, -1);
+		}
+		lua_pop(L, 1);
+
+		lock_move = getboolfield_default(L, 3, "lock_move", lock_move);
+		lock_look = getboolfield_default(L, 3, "lock_look", lock_look);
 
 		lua_getfield(L, 3, "fov");
 		if (!lua_isnil(L, -1)) {
@@ -127,7 +136,7 @@ int ModApiCameraControl::l_set(lua_State *L)
 	}
 
 	if (preset == 0 || preset == 1 || preset == 2) {
-		server->SendCameraControlSetPreset(peer_id, preset, ease_time, ease_type, lock_input);
+		server->SendCameraControlSetPreset(peer_id, preset, ease_time, ease_type, lock_move, lock_look);
 		return 0;
 	}
 
@@ -146,7 +155,43 @@ int ModApiCameraControl::l_set(lua_State *L)
 		if (!has_facing && !has_rot)
 			throw LuaError("core.camera.set free: opts.facing or opts.rot required");
 
-		server->SendCameraControlSetFree(peer_id, ease_time, ease_type, lock_input, pos, orient_type, orient);
+		server->SendCameraControlSetFree(peer_id, ease_time, ease_type, lock_move, lock_look, pos, orient_type, orient);
+		return 0;
+	}
+
+	if (preset == 5) {
+		luaL_checktype(L, 3, LUA_TTABLE);
+
+		v3f pos_offset;
+		if (!readVecField(L, 3, "pos_offset", &pos_offset))
+			throw LuaError("core.camera.set body_offset: opts.pos_offset required");
+
+		v3f look_offset;
+		readVecField(L, 3, "look_offset", &look_offset);
+
+		server->SendCameraControlSetBodyOffset(peer_id, ease_time, ease_type, lock_move, lock_look,
+			pos_offset, look_offset);
+		return 0;
+	}
+
+	if (preset == 6) {
+		luaL_checktype(L, 3, LUA_TTABLE);
+
+		v3f pos;
+		bool has_pos = readVecField(L, 3, "pos", &pos);
+		f32 speed = getfloatfield_default(L, 3, "speed", 5.0f);
+		f32 sprint_multiplier = getfloatfield_default(L, 3, "sprint_multiplier", 3.0f);
+		bool vertical = getboolfield_default(L, 3, "vertical", true);
+
+		v3f init_pos = pos;
+		if (!has_pos) {
+			if (PlayerSAO *psao = player->getPlayerSAO())
+				init_pos = psao->getEyePosition() / BS;
+		}
+		server->setCameraSpectatorActive(peer_id, true, &init_pos);
+
+		server->SendCameraControlSetSpectator(peer_id, ease_time, ease_type, lock_move, lock_look,
+			has_pos, pos, speed, sprint_multiplier, vertical);
 		return 0;
 	}
 
@@ -162,48 +207,6 @@ int ModApiCameraControl::l_set(lua_State *L)
 			throw LuaError("core.camera.set follow_orbit: opts.target required");
 		}
 
-		if (preset == 5) {
-			luaL_checktype(L, 3, LUA_TTABLE);
-
-			v3f pos_offset;
-			if (!readVecField(L, 3, "pos_offset", &pos_offset))
-				throw LuaError("core.camera.set body_offset: opts.pos_offset required");
-
-			v3f look_offset;
-			readVecField(L, 3, "look_offset", &look_offset);
-
-			server->SendCameraControlSetBodyOffset(peer_id, ease_time, ease_type, lock_input,
-				pos_offset, look_offset);
-			return 0;
-		}
-
-		if (preset == 6) {
-			luaL_checktype(L, 3, LUA_TTABLE);
-
-			bool has_lock_input = false;
-			lua_getfield(L, 3, "lock_input");
-			has_lock_input = !lua_isnil(L, -1);
-			lua_pop(L, 1);
-			if (!has_lock_input)
-				lock_input = true;
-
-			v3f pos;
-			bool has_pos = readVecField(L, 3, "pos", &pos);
-			f32 speed = getfloatfield_default(L, 3, "speed", 5.0f);
-			f32 sprint_multiplier = getfloatfield_default(L, 3, "sprint_multiplier", 3.0f);
-			bool vertical = getboolfield_default(L, 3, "vertical", true);
-
-			v3f init_pos = pos;
-			if (!has_pos) {
-				if (PlayerSAO *psao = player->getPlayerSAO())
-					init_pos = psao->getEyePosition() / BS;
-			}
-			server->setCameraSpectatorActive(peer_id, true, &init_pos);
-
-			server->SendCameraControlSetSpectator(peer_id, ease_time, ease_type, lock_input,
-				has_pos, pos, speed, sprint_multiplier, vertical);
-			return 0;
-		}
 		if (lua_istable(L, -1)) {
 			target_type = 0;
 			target_pos = check_v3f(L, -1);
@@ -223,7 +226,7 @@ int ModApiCameraControl::l_set(lua_State *L)
 		v3f view_offset;
 		readVecField(L, 3, "view_offset", &view_offset);
 
-		server->SendCameraControlSetFollowOrbit(peer_id, ease_time, ease_type, lock_input,
+		server->SendCameraControlSetFollowOrbit(peer_id, ease_time, ease_type, lock_move, lock_look,
 			target_type, target_pos, target_object_id, radius, yaw_offset, pitch_offset, view_offset);
 		return 0;
 	}
