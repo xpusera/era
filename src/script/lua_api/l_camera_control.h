@@ -8,12 +8,12 @@
 class ModApiCameraControl : public ModApiBase
 {
 private:
-	static int l_set(lua_State *L);
-	static int l_clear(lua_State *L);
-	static int l_shake(lua_State *L);
-	static int l_fade(lua_State *L);
+		static int l_set(lua_State *L);
+		static int l_clear(lua_State *L);
+		static int l_shake(lua_State *L);
+		static int l_fade(lua_State *L);
+		static int l_get_spectator_pos(lua_State *L);
 
 public:
-	static void Initialize(lua_State *L, int top);
-};
-
+		static void Initialize(lua_State *L, int top);
+	};

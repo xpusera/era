@@ -2104,16 +2104,42 @@ void Server::SendCameraControlSetPreset(session_t peer_id, u8 preset, f32 ease_t
 	Send(&pkt);
 }
 
-void Server::SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
-	bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient)
-{
-	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 1 + 12, peer_id);
-	const u8 type = 0;
-	const u8 preset = 3;
-	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
-	pkt << pos << orient_type << orient;
-	Send(&pkt);
-}
+	void Server::SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
+		bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient)
+	{
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 1 + 12, peer_id);
+		const u8 type = 0;
+		const u8 preset = 3;
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << pos << orient_type << orient;
+		Send(&pkt);
+	}
+
+	void Server::SendCameraControlSetBodyOffset(session_t peer_id, f32 ease_time, u8 ease_type,
+		bool lock_input, const v3f &pos_offset, const v3f &look_offset_deg)
+	{
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 12 + 12, peer_id);
+		const u8 type = 0;
+		const u8 preset = 5;
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << pos_offset << look_offset_deg;
+		Send(&pkt);
+	}
+
+	void Server::SendCameraControlSetSpectator(session_t peer_id, f32 ease_time, u8 ease_type,
+		bool lock_input, bool has_pos, const v3f &pos, f32 speed, f32 sprint_multiplier,
+		bool vertical)
+	{
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + 12 + 4 + 4 + 1, peer_id);
+		const u8 type = 0;
+		const u8 preset = 6;
+		pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
+		pkt << (u8)(has_pos ? 1 : 0);
+		if (has_pos)
+			pkt << pos;
+		pkt << speed << sprint_multiplier << (u8)(vertical ? 1 : 0);
+		Send(&pkt);
+	}
 
 void Server::SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
 	bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
@@ -2148,13 +2174,53 @@ void Server::SendCameraControlShake(session_t peer_id, f32 intensity, f32 durati
 	Send(&pkt);
 }
 
-void Server::SendCameraControlFade(session_t peer_id, u32 argb, f32 fade_in, f32 hold, f32 fade_out)
-{
-	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 4 + 4 + 4 + 4, peer_id);
-	const u8 type = 3;
-	pkt << type << argb << fade_in << hold << fade_out;
-	Send(&pkt);
-}
+	void Server::SendCameraControlFade(session_t peer_id, u32 argb, f32 fade_in, f32 hold, f32 fade_out)
+	{
+		NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 4 + 4 + 4 + 4, peer_id);
+		const u8 type = 3;
+		pkt << type << argb << fade_in << hold << fade_out;
+		Send(&pkt);
+	}
+
+	bool Server::isCameraSpectatorActive(session_t peer_id) const
+	{
+		std::lock_guard<std::mutex> lock(m_camera_spectator_mutex);
+		return m_camera_spectator_active.find(peer_id) != m_camera_spectator_active.end();
+	}
+
+	bool Server::getCameraSpectatorPos(session_t peer_id, v3f *out_pos) const
+	{
+		std::lock_guard<std::mutex> lock(m_camera_spectator_mutex);
+		if (m_camera_spectator_active.find(peer_id) == m_camera_spectator_active.end())
+			return false;
+		auto it = m_camera_spectator_pos.find(peer_id);
+		if (it == m_camera_spectator_pos.end())
+			return false;
+		if (out_pos)
+			*out_pos = it->second;
+		return true;
+	}
+
+	void Server::setCameraSpectatorActive(session_t peer_id, bool active, const v3f *pos)
+	{
+		std::lock_guard<std::mutex> lock(m_camera_spectator_mutex);
+		if (active) {
+			m_camera_spectator_active.insert(peer_id);
+			if (pos)
+				m_camera_spectator_pos[peer_id] = *pos;
+		} else {
+			m_camera_spectator_active.erase(peer_id);
+			m_camera_spectator_pos.erase(peer_id);
+		}
+	}
+
+	void Server::setCameraSpectatorPos(session_t peer_id, const v3f &pos)
+	{
+		std::lock_guard<std::mutex> lock(m_camera_spectator_mutex);
+		if (m_camera_spectator_active.find(peer_id) == m_camera_spectator_active.end())
+			return;
+		m_camera_spectator_pos[peer_id] = pos;
+	}
 
 void Server::SendTimeOfDay(session_t peer_id, u16 time, f32 time_speed)
 {

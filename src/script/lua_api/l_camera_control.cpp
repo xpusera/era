@@ -55,21 +55,25 @@ namespace {
 		return psao ? psao->getPlayer() : nullptr;
 	}
 
-	u8 parsePreset(lua_State *L, int idx)
-	{
-		std::string p(luaL_checkstring(L, idx));
-		if (p == "first_person")
-			return 0;
-		if (p == "third_person")
-			return 1;
-		if (p == "third_person_front")
-			return 2;
-		if (p == "free")
-			return 3;
-		if (p == "follow_orbit")
-			return 4;
-		throw LuaError("core.camera: invalid preset: " + p);
-	}
+		u8 parsePreset(lua_State *L, int idx)
+		{
+			std::string p(luaL_checkstring(L, idx));
+			if (p == "first_person")
+				return 0;
+			if (p == "third_person")
+				return 1;
+			if (p == "third_person_front")
+				return 2;
+			if (p == "free")
+				return 3;
+			if (p == "follow_orbit")
+				return 4;
+			if (p == "body_offset")
+				return 5;
+			if (p == "spectator")
+				return 6;
+			throw LuaError("core.camera: invalid preset: " + p);
+		}
 
 	bool readVecField(lua_State *L, int tableidx, const char *name, v3f *out)
 	{
@@ -96,15 +100,15 @@ int ModApiCameraControl::l_set(lua_State *L)
 	session_t peer_id = player->getPeerId();
 
 	f32 ease_time = 0.0f;
-	u8 ease_type = 0;
-	bool lock_input = false;
+		u8 ease_type = 0;
+		bool lock_input = false;
 
-	if (lua_istable(L, 3)) {
+		if (lua_istable(L, 3)) {
 		lua_getfield(L, 3, "ease");
 		ease_time = parseEaseTime(L, -1);
 		ease_type = parseEaseType(L, -1);
 		lua_pop(L, 1);
-		lock_input = getboolfield_default(L, 3, "lock_input", false);
+			lock_input = getboolfield_default(L, 3, "lock_input", false);
 
 		lua_getfield(L, 3, "fov");
 		if (!lua_isnil(L, -1)) {
@@ -115,6 +119,10 @@ int ModApiCameraControl::l_set(lua_State *L)
 			if (player->setFov(s))
 				server->SendPlayerFov(peer_id);
 		}
+
+		if (preset != 6) {
+			server->setCameraSpectatorActive(peer_id, false);
+		}
 		lua_pop(L, 1);
 	}
 
@@ -123,7 +131,7 @@ int ModApiCameraControl::l_set(lua_State *L)
 		return 0;
 	}
 
-	if (preset == 3) {
+		if (preset == 3) {
 		luaL_checktype(L, 3, LUA_TTABLE);
 		v3f pos;
 		if (!readVecField(L, 3, "pos", &pos))
@@ -152,6 +160,49 @@ int ModApiCameraControl::l_set(lua_State *L)
 		if (lua_isnil(L, -1)) {
 			lua_pop(L, 1);
 			throw LuaError("core.camera.set follow_orbit: opts.target required");
+		}
+
+		if (preset == 5) {
+			luaL_checktype(L, 3, LUA_TTABLE);
+
+			v3f pos_offset;
+			if (!readVecField(L, 3, "pos_offset", &pos_offset))
+				throw LuaError("core.camera.set body_offset: opts.pos_offset required");
+
+			v3f look_offset;
+			readVecField(L, 3, "look_offset", &look_offset);
+
+			server->SendCameraControlSetBodyOffset(peer_id, ease_time, ease_type, lock_input,
+				pos_offset, look_offset);
+			return 0;
+		}
+
+		if (preset == 6) {
+			luaL_checktype(L, 3, LUA_TTABLE);
+
+			bool has_lock_input = false;
+			lua_getfield(L, 3, "lock_input");
+			has_lock_input = !lua_isnil(L, -1);
+			lua_pop(L, 1);
+			if (!has_lock_input)
+				lock_input = true;
+
+			v3f pos;
+			bool has_pos = readVecField(L, 3, "pos", &pos);
+			f32 speed = getfloatfield_default(L, 3, "speed", 5.0f);
+			f32 sprint_multiplier = getfloatfield_default(L, 3, "sprint_multiplier", 3.0f);
+			bool vertical = getboolfield_default(L, 3, "vertical", true);
+
+			v3f init_pos = pos;
+			if (!has_pos) {
+				if (PlayerSAO *psao = player->getPlayerSAO())
+					init_pos = psao->getEyePosition() / BS;
+			}
+			server->setCameraSpectatorActive(peer_id, true, &init_pos);
+
+			server->SendCameraControlSetSpectator(peer_id, ease_time, ease_type, lock_input,
+				has_pos, pos, speed, sprint_multiplier, vertical);
+			return 0;
 		}
 		if (lua_istable(L, -1)) {
 			target_type = 0;
@@ -208,7 +259,28 @@ int ModApiCameraControl::l_clear(lua_State *L)
 		server->SendPlayerFov(peer_id);
 
 	server->SendCameraControlClear(peer_id, ease_time, ease_type);
+	server->setCameraSpectatorActive(peer_id, false);
 	return 0;
+}
+
+int ModApiCameraControl::l_get_spectator_pos(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+
+	RemotePlayer *player = getRemotePlayer(L, 1);
+	if (!player) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	Server *server = ModApiBase::getServer(L);
+	v3f pos;
+	if (!server->getCameraSpectatorPos(player->getPeerId(), &pos)) {
+		lua_pushnil(L);
+		return 1;
+	}
+	push_v3f(L, pos);
+	return 1;
 }
 
 int ModApiCameraControl::l_shake(lua_State *L)
@@ -260,6 +332,7 @@ void ModApiCameraControl::Initialize(lua_State *L, int top)
 	registerFunction(L, "_clear", l_clear, tbl);
 	registerFunction(L, "_shake", l_shake, tbl);
 	registerFunction(L, "_fade", l_fade, tbl);
+	registerFunction(L, "_get_spectator_pos", l_get_spectator_pos, tbl);
 
 	lua_setfield(L, top, "camera");
 }

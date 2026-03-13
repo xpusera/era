@@ -170,7 +170,7 @@ protected:
 	void updateCameraDirection(CameraOrientation *cam, float dtime);
 	void updateCameraOrientation(CameraOrientation *cam, float dtime);
 	bool getTogglableKeyState(GameKeyType key, bool toggling_enabled, bool prev_key_state);
-	void updatePlayerControl(const CameraOrientation &cam);
+	void updatePlayerControl(const CameraOrientation &cam, float dtime);
 	void updatePauseState();
 	void step(f32 dtime);
 	void processClientEvents(CameraOrientation *cam);

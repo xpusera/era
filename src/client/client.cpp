@@ -1550,6 +1550,13 @@ void Client::sendUpdateClientInfo(const ClientDynamicInfo& info)
 	Send(&pkt);
 }
 
+void Client::sendCameraSpectatorPos(const v3f &pos)
+{
+	NetworkPacket pkt(TOSERVER_CAMERA_SPECTATOR_POS, 12);
+	pkt << pos;
+	Send(&pkt);
+}
+
 void Client::removeNode(v3s16 p)
 {
 	std::map<v3s16, MapBlock*> modified_blocks;

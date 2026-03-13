@@ -1834,3 +1834,10 @@ void Server::handleCommand_UpdateClientInfo(NetworkPacket *pkt)
 	RemoteClient *client = getClient(peer_id, CS_Invalid);
 	client->setDynamicInfo(info);
 }
+
+void Server::handleCommand_CameraSpectatorPos(NetworkPacket *pkt)
+{
+	v3f pos;
+	*pkt >> pos;
+	setCameraSpectatorPos(pkt->getPeerId(), pos);
+}

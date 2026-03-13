@@ -69,40 +69,63 @@ public:
 		out_back = 4,
 	};
 
-	enum class ServerPreset : u8 {
-		first_person = 0,
-		third_person = 1,
-		third_person_front = 2,
-		free = 3,
-		follow_orbit = 4,
-	};
+		enum class ServerPreset : u8 {
+			first_person = 0,
+			third_person = 1,
+			third_person_front = 2,
+			free = 3,
+			follow_orbit = 4,
+			body_offset = 5,
+			spectator = 6,
+		};
 
-	struct ServerSetSpec {
-		ServerPreset preset = ServerPreset::first_person;
-		f32 ease_time = 0.0f;
-		ServerEaseType ease_type = ServerEaseType::linear;
-		bool lock_input = false;
+		struct ServerSetSpec {
+			ServerPreset preset = ServerPreset::first_person;
+			f32 ease_time = 0.0f;
+			ServerEaseType ease_type = ServerEaseType::linear;
+			bool lock_input = false;
 
 		// free
 		v3f free_pos = v3f();
 		u8 free_orient_type = 0; // 0=rot, 1=facing
 		v3f free_orient = v3f();
 
-		// follow_orbit
-		u8 orbit_target_type = 0; // 0=pos, 1=object
-		v3f orbit_target_pos = v3f();
-		u16 orbit_target_object_id = 0;
-		f32 orbit_radius = 0.0f;
-		f32 orbit_yaw_offset = 0.0f;
-		f32 orbit_pitch_offset = 0.0f;
-		v3f orbit_view_offset = v3f();
-	};
+			// follow_orbit
+			u8 orbit_target_type = 0; // 0=pos, 1=object
+			v3f orbit_target_pos = v3f();
+			u16 orbit_target_object_id = 0;
+			f32 orbit_radius = 0.0f;
+			f32 orbit_yaw_offset = 0.0f;
+			f32 orbit_pitch_offset = 0.0f;
+			v3f orbit_view_offset = v3f();
+
+			// body_offset
+			v3f body_pos_offset = v3f();
+			v3f body_look_offset_deg = v3f();
+
+			// spectator
+			bool spectator_has_pos = false;
+			v3f spectator_pos = v3f();
+			f32 spectator_speed = 5.0f;
+			f32 spectator_sprint_multiplier = 3.0f;
+			bool spectator_vertical = true;
+		};
 
 	void applyServerCameraSet(const ServerSetSpec &spec);
 	void applyServerCameraClear(f32 ease_time = 0.0f, ServerEaseType ease_type = ServerEaseType::linear);
 	void applyServerCameraShake(f32 intensity_deg, f32 duration, bool decay);
-	bool isServerInputLocked() const { return m_server_input_locked; }
-	bool isServerCameraActive() const { return m_server_camera_active; }
+		bool isServerInputLocked() const { return m_server_input_locked; }
+		bool isServerCameraActive() const { return m_server_camera_active; }
+		bool isServerSpectatorActive() const { return m_server_camera_active && m_server_spec.preset == ServerPreset::spectator; }
+		bool isServerBodyOffsetActive() const { return m_server_camera_active && m_server_spec.preset == ServerPreset::body_offset; }
+		ServerPreset getServerPreset() const { return m_server_spec.preset; }
+
+		void setUserCameraOrientation(f32 yaw, f32 pitch) { m_user_yaw = yaw; m_user_pitch = pitch; }
+		v3f getSpectatorPos() const { return m_spectator_pos_nodes; }
+		f32 getSpectatorSpeed() const { return m_server_spec.spectator_speed; }
+		f32 getSpectatorSprintMultiplier() const { return m_server_spec.spectator_sprint_multiplier; }
+		bool getSpectatorVertical() const { return m_server_spec.spectator_vertical; }
+		void moveSpectator(const v3f &delta_nodes) { m_spectator_pos_nodes += delta_nodes; }
 
 	Camera(MapDrawControl &draw_control, Client *client, RenderingEngine *rendering_engine);
 	~Camera();
@@ -303,10 +326,17 @@ private:
 
 	CameraMode m_camera_mode;
 
-	// Server-controlled camera state
-	bool m_server_camera_active = false;
-	ServerSetSpec m_server_spec;
-	bool m_server_input_locked = false;
+		// Server-controlled camera state
+		bool m_server_camera_active = false;
+		ServerSetSpec m_server_spec;
+		bool m_server_input_locked = false;
+
+		// Last user camera yaw/pitch (from Game), used by spectator.
+		f32 m_user_yaw = 0.0f;
+		f32 m_user_pitch = 0.0f;
+
+		// Spectator camera position in node units.
+		v3f m_spectator_pos_nodes = v3f();
 
 	struct {
 		bool active = false;

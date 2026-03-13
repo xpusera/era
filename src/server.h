@@ -242,8 +242,9 @@ public:
 	void handleCommand_FirstSrp(NetworkPacket* pkt);
 	void handleCommand_SrpBytesA(NetworkPacket* pkt);
 	void handleCommand_SrpBytesM(NetworkPacket* pkt);
-	void handleCommand_HaveMedia(NetworkPacket *pkt);
-	void handleCommand_UpdateClientInfo(NetworkPacket *pkt);
+		void handleCommand_HaveMedia(NetworkPacket *pkt);
+		void handleCommand_UpdateClientInfo(NetworkPacket *pkt);
+		void handleCommand_CameraSpectatorPos(NetworkPacket *pkt);
 
 	void ProcessData(NetworkPacket *pkt);
 
@@ -436,12 +437,23 @@ public:
 			u8 ease_type, bool lock_input);
 		void SendCameraControlSetFree(session_t peer_id, f32 ease_time, u8 ease_type,
 			bool lock_input, const v3f &pos, u8 orient_type, const v3f &orient);
+		void SendCameraControlSetBodyOffset(session_t peer_id, f32 ease_time, u8 ease_type,
+			bool lock_input, const v3f &pos_offset, const v3f &look_offset_deg);
+		void SendCameraControlSetSpectator(session_t peer_id, f32 ease_time, u8 ease_type,
+			bool lock_input, bool has_pos, const v3f &pos,
+			f32 speed, f32 sprint_multiplier, bool vertical);
 		void SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u8 ease_type,
 			bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
 			f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset);
 		void SendCameraControlClear(session_t peer_id, f32 ease_time, u8 ease_type);
 		void SendCameraControlShake(session_t peer_id, f32 intensity, f32 duration, bool decay);
 		void SendCameraControlFade(session_t peer_id, u32 argb, f32 fade_in, f32 hold, f32 fade_out);
+
+		// Spectator camera position sync (client-controlled)
+		bool isCameraSpectatorActive(session_t peer_id) const;
+		bool getCameraSpectatorPos(session_t peer_id, v3f *out_pos) const;
+		void setCameraSpectatorActive(session_t peer_id, bool active, const v3f *pos = nullptr);
+		void setCameraSpectatorPos(session_t peer_id, const v3f &pos);
 
 	void SendMinimapModes(session_t peer_id,
 			std::vector<MinimapMode> &modes,
@@ -756,9 +768,13 @@ private:
 	/*
 	 	Client interface
 	*/
-	ClientInterface m_clients;
+		ClientInterface m_clients;
 
-	std::unordered_map<session_t, std::string> m_formspec_state_data;
+		std::unordered_map<session_t, std::string> m_formspec_state_data;
+
+		mutable std::mutex m_camera_spectator_mutex;
+		std::unordered_set<session_t> m_camera_spectator_active;
+		std::unordered_map<session_t, v3f> m_camera_spectator_pos;
 
 	/*
 		Random stuff

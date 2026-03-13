@@ -701,26 +701,35 @@ enum ToClientCommand : u16
 				u8[len] serialized ParticleParameters
 		*/
 
-			TOCLIENT_CAMERA_CONTROL = 0x65,
-			/*
-			u8 type (CameraControlType)
-			if type == 0 (set):
-				u8 preset (CameraPreset)
-				f32 ease_time
-				u8 ease_type (CameraEaseType)
-				u8 lock_input
-				if preset == free:
-					v3f pos
-					u8 orient_type (0=rot, 1=facing)
-					v3f orient (rot_deg or facing_pos)
-				if preset == follow_orbit:
-					u8 target_type (0=pos, 1=object)
-					if target_type==0: v3f target_pos
-					if target_type==1: u16 target_object_id
-					f32 radius
-					f32 yaw_offset
-					f32 pitch_offset
-					v3f view_offset
+				TOCLIENT_CAMERA_CONTROL = 0x65,
+				/*
+				u8 type (CameraControlType)
+				if type == 0 (set):
+					u8 preset (CameraPreset)
+					f32 ease_time
+					u8 ease_type (CameraEaseType)
+					u8 lock_input
+					if preset == free:
+						v3f pos
+						u8 orient_type (0=rot, 1=facing)
+						v3f orient (rot_deg or facing_pos)
+					if preset == body_offset:
+						v3f pos_offset
+						v3f look_offset_deg (x=pitch, y=yaw, z=roll)
+					if preset == spectator:
+						u8 has_pos
+						if has_pos != 0: v3f pos
+						f32 speed
+						f32 sprint_multiplier
+						u8 vertical
+					if preset == follow_orbit:
+						u8 target_type (0=pos, 1=object)
+						if target_type==0: v3f target_pos
+						if target_type==1: u16 target_object_id
+						f32 radius
+						f32 yaw_offset
+						f32 pitch_offset
+						v3f view_offset
 			if type == 1 (clear):
 				f32 ease_time
 				u8 ease_type
@@ -962,16 +971,21 @@ enum ToServerCommand : u16
 		std::string bytes_M
 	*/
 
-	TOSERVER_UPDATE_CLIENT_INFO = 0x53,
-	/*
-		v2s16 render_target_size
-		f32 gui_scaling
-		f32 hud_scaling
-		v2f32 max_fs_info
-	*/
+		TOSERVER_UPDATE_CLIENT_INFO = 0x53,
+		/*
+			v2s16 render_target_size
+			f32 gui_scaling
+			f32 hud_scaling
+			v2f32 max_fs_info
+		*/
 
-	TOSERVER_NUM_MSG_TYPES = 0x54,
-};
+		TOSERVER_CAMERA_SPECTATOR_POS = 0x54,
+		/*
+			v3f pos
+		*/
+
+		TOSERVER_NUM_MSG_TYPES = 0x55,
+	};
 
 enum AuthMechanism
 {

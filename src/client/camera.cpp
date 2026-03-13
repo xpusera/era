@@ -167,10 +167,58 @@ void Camera::updateServerCameraOverride(f32 dtime, v3f *pos, v3f *dir, v3f *up)
 		return;
 
 	const auto preset = m_server_spec.preset;
-	if (preset != ServerPreset::free && preset != ServerPreset::follow_orbit)
+	if (preset != ServerPreset::free && preset != ServerPreset::follow_orbit &&
+			preset != ServerPreset::body_offset && preset != ServerPreset::spectator)
 		return;
 
 	*up = v3f(0, 1, 0);
+
+	if (preset == ServerPreset::spectator) {
+		*pos = m_spectator_pos_nodes * BS;
+		v3f d(0, 0, 1);
+		d.rotateYZBy(m_user_pitch);
+		d.rotateXZBy(m_user_yaw);
+		if (d.getLengthSQ() > 0.000001f)
+			d.normalize();
+		else
+			d = v3f(0, 0, 1);
+		*dir = d;
+		return;
+	}
+
+	if (preset == ServerPreset::body_offset) {
+		v3f head_pos = getHeadPosition();
+		v3f ofs_local = m_server_spec.body_pos_offset * BS;
+		v3f ofs_world = m_headnode->getAbsoluteTransformation().rotateAndScaleVect(ofs_local);
+		*pos = head_pos + ofs_world;
+
+		v3f d = *dir;
+		if (d.getLengthSQ() > 0.000001f)
+			d.normalize();
+		else
+			d = v3f(0, 0, 1);
+		v3f u = *up;
+
+		d.rotateYZBy(m_server_spec.body_look_offset_deg.X);
+		d.rotateXZBy(m_server_spec.body_look_offset_deg.Y);
+		u.rotateYZBy(m_server_spec.body_look_offset_deg.X);
+		u.rotateXZBy(m_server_spec.body_look_offset_deg.Y);
+
+		const f32 roll = m_server_spec.body_look_offset_deg.Z;
+		if (std::abs(roll) > 0.0001f) {
+			core::quaternion q;
+			q.fromAngleAxis(roll * core::DEGTORAD, d);
+			u = q * u;
+		}
+
+		if (d.getLengthSQ() > 0.000001f)
+			d.normalize();
+		if (u.getLengthSQ() > 0.000001f)
+			u.normalize();
+		*dir = d;
+		*up = u;
+		return;
+	}
 
 	if (preset == ServerPreset::free) {
 		*pos = m_server_spec.free_pos * BS;
@@ -244,6 +292,16 @@ void Camera::applyServerCameraSet(const ServerSetSpec &spec)
 	case ServerPreset::free:
 	case ServerPreset::follow_orbit:
 		m_camera_mode = CAMERA_MODE_THIRD;
+		break;
+	case ServerPreset::body_offset:
+		m_camera_mode = CAMERA_MODE_FIRST;
+		break;
+	case ServerPreset::spectator:
+		m_camera_mode = CAMERA_MODE_FIRST;
+		if (spec.spectator_has_pos)
+			m_spectator_pos_nodes = spec.spectator_pos;
+		else
+			m_spectator_pos_nodes = getHeadPosition() / BS;
 		break;
 	}
 }
@@ -666,8 +724,11 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 	v3f override_pos = final_pos;
 	v3f override_dir = final_dir;
 	v3f override_up = final_up;
-	const bool has_override = m_server_camera_active &&
-		(m_server_spec.preset == ServerPreset::free || m_server_spec.preset == ServerPreset::follow_orbit);
+		const bool has_override = m_server_camera_active &&
+			(m_server_spec.preset == ServerPreset::free ||
+				m_server_spec.preset == ServerPreset::follow_orbit ||
+				m_server_spec.preset == ServerPreset::body_offset ||
+				m_server_spec.preset == ServerPreset::spectator);
 	if (has_override) {
 		updateServerCameraOverride(frametime, &override_pos, &override_dir, &override_up);
 		applyServerTransition(frametime, override_pos, override_dir, override_up,

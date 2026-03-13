@@ -12,6 +12,13 @@ local raw_set = cam._set
 local raw_clear = cam._clear
 local raw_shake = cam._shake
 local raw_fade = cam._fade
+local raw_get_spectator_pos = cam._get_spectator_pos
+
+if type(raw_get_spectator_pos) == "function" then
+	function cam.get_spectator_pos(player)
+		return raw_get_spectator_pos(player)
+	end
+end
 
 function cam.set(player, preset, opts)
 	return raw_set(player, preset, opts)
@@ -58,4 +65,3 @@ function cam.fade(player, opts)
 
 	return raw_fade(player, opts)
 end
-

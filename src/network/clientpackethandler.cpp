@@ -1695,28 +1695,46 @@ void Client::handleCommand_CameraControl(NetworkPacket *pkt)
 		spec.ease_type = static_cast<Camera::ServerEaseType>(ease_type);
 		spec.lock_input = !!lock_input;
 
-		if (spec.preset == Camera::ServerPreset::free) {
-			v3f pos, orient;
-			u8 orient_type;
-			*pkt >> pos >> orient_type >> orient;
-			spec.free_pos = pos;
-			spec.free_orient_type = orient_type;
-			spec.free_orient = orient;
-		} else if (spec.preset == Camera::ServerPreset::follow_orbit) {
-			u8 target_type;
-			*pkt >> target_type;
-			spec.orbit_target_type = target_type;
-			if (target_type == 0) {
-				v3f target_pos;
-				*pkt >> target_pos;
-				spec.orbit_target_pos = target_pos;
-			} else {
-				u16 id;
-				*pkt >> id;
-				spec.orbit_target_object_id = id;
+			if (spec.preset == Camera::ServerPreset::free) {
+				v3f pos, orient;
+				u8 orient_type;
+				*pkt >> pos >> orient_type >> orient;
+				spec.free_pos = pos;
+				spec.free_orient_type = orient_type;
+				spec.free_orient = orient;
+			} else if (spec.preset == Camera::ServerPreset::body_offset) {
+				v3f pos_offset, look_offset;
+				*pkt >> pos_offset >> look_offset;
+				spec.body_pos_offset = pos_offset;
+				spec.body_look_offset_deg = look_offset;
+			} else if (spec.preset == Camera::ServerPreset::spectator) {
+				u8 has_pos;
+				*pkt >> has_pos;
+				spec.spectator_has_pos = !!has_pos;
+				if (spec.spectator_has_pos) {
+					v3f pos;
+					*pkt >> pos;
+					spec.spectator_pos = pos;
+				}
+				*pkt >> spec.spectator_speed >> spec.spectator_sprint_multiplier;
+				u8 vertical;
+				*pkt >> vertical;
+				spec.spectator_vertical = !!vertical;
+			} else if (spec.preset == Camera::ServerPreset::follow_orbit) {
+				u8 target_type;
+				*pkt >> target_type;
+				spec.orbit_target_type = target_type;
+				if (target_type == 0) {
+					v3f target_pos;
+					*pkt >> target_pos;
+					spec.orbit_target_pos = target_pos;
+				} else {
+					u16 id;
+					*pkt >> id;
+					spec.orbit_target_object_id = id;
+				}
+				*pkt >> spec.orbit_radius >> spec.orbit_yaw_offset >> spec.orbit_pitch_offset >> spec.orbit_view_offset;
 			}
-			*pkt >> spec.orbit_radius >> spec.orbit_yaw_offset >> spec.orbit_pitch_offset >> spec.orbit_view_offset;
-		}
 
 		if (m_camera)
 			m_camera->applyServerCameraSet(spec);

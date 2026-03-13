@@ -586,7 +586,7 @@ void Game::run()
 					cam_damp_lambda
 			);
 		}
-		updatePlayerControl(cam_view);
+			updatePlayerControl(cam_view, dtime);
 
 		updatePauseState();
 		if (m_is_paused)
@@ -2033,9 +2033,59 @@ bool Game::getTogglableKeyState(GameKeyType key, bool toggling_enabled, bool pre
 }
 
 
-void Game::updatePlayerControl(const CameraOrientation &cam)
+void Game::updatePlayerControl(const CameraOrientation &cam, float dtime)
 {
 	LocalPlayer *player = client->getEnv().getLocalPlayer();
+	camera->setUserCameraOrientation(cam.camera_yaw, cam.camera_pitch);
+
+	static float spectator_send_acc = 0.0f;
+	if (camera->isServerSpectatorActive()) {
+		v3f forward(0, 0, 1);
+		forward.rotateYZBy(cam.camera_pitch);
+		forward.rotateXZBy(cam.camera_yaw);
+		if (forward.getLengthSQ() > 0.000001f)
+			forward.normalize();
+		else
+			forward = v3f(0, 0, 1);
+		v3f up(0, 1, 0);
+		v3f right = up.crossProduct(forward);
+		right.Y = 0;
+		if (right.getLengthSQ() > 0.000001f)
+			right.normalize();
+		else
+			right = v3f(1, 0, 0);
+
+		v3f move(0, 0, 0);
+		if (isKeyDown(KeyType::FORWARD))
+			move += forward;
+		if (isKeyDown(KeyType::BACKWARD))
+			move -= forward;
+		if (isKeyDown(KeyType::RIGHT))
+			move += right;
+		if (isKeyDown(KeyType::LEFT))
+			move -= right;
+		if (camera->getSpectatorVertical()) {
+			if (isKeyDown(KeyType::JUMP) || player->getAutojump())
+				move += up;
+			if (isKeyDown(KeyType::SNEAK))
+				move -= up;
+		}
+		if (move.getLengthSQ() > 0.000001f)
+			move.normalize();
+
+		float speed = camera->getSpectatorSpeed();
+		if (isKeyDown(KeyType::AUX1))
+			speed *= camera->getSpectatorSprintMultiplier();
+		camera->moveSpectator(move * speed * dtime);
+
+		spectator_send_acc += dtime;
+		if (spectator_send_acc >= 0.10f) {
+			spectator_send_acc = 0.0f;
+			client->sendCameraSpectatorPos(camera->getSpectatorPos());
+		}
+	} else {
+		spectator_send_acc = 0.0f;
+	}
 
 	// In free move (fly), the "toggle_sneak_key" setting would prevent precise
 	// up/down movements. Hence, enable the feature only during 'normal' movement.
@@ -2080,19 +2130,33 @@ void Game::updatePlayerControl(const CameraOrientation &cam)
 			control.aux1 = control.aux1 ^ true;
 		}
 
-		if (camera->isServerInputLocked()) {
-			control.direction_keys = 0;
-			control.movement_speed = 0.0f;
-			control.movement_direction = 0.0f;
-			control.jump = false;
-			control.aux1 = false;
-			control.sneak = false;
-			control.zoom = false;
-			control.dig = false;
-			control.place = false;
-			control.pitch = player->getPitch();
-			control.yaw = player->getYaw();
-		}
+			if (camera->isServerInputLocked()) {
+				control.direction_keys = 0;
+				control.movement_speed = 0.0f;
+				control.movement_direction = 0.0f;
+				control.jump = false;
+				control.aux1 = false;
+				control.sneak = false;
+				control.zoom = false;
+				control.dig = false;
+				control.place = false;
+				control.pitch = player->getPitch();
+				control.yaw = player->getYaw();
+			}
+
+			if (camera->isServerSpectatorActive()) {
+				control.direction_keys = 0;
+				control.movement_speed = 0.0f;
+				control.movement_direction = 0.0f;
+				control.jump = false;
+				control.aux1 = false;
+				control.sneak = false;
+				control.zoom = false;
+				control.dig = false;
+				control.place = false;
+				control.pitch = player->getPitch();
+				control.yaw = player->getYaw();
+			}
 
 		client->setPlayerControl(control);
 
