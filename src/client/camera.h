@@ -67,6 +67,9 @@ public:
 		out_cubic = 2,
 		in_out_cubic = 3,
 		out_back = 4,
+		in_back = 5,
+		in_out_back = 6,
+		out_elastic = 7,
 	};
 
 		enum class ServerPreset : u8 {

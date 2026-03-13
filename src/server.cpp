@@ -1791,6 +1791,10 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
 		p.exptime.start.legacySerialize(os);
 		p.size.start.legacySerialize(os);
 	}
+
+	writeV3F32(os, p.drag);
+	p.jitter.legacySerialize(os);
+	p.bounce.legacySerialize(os);
 	pkt.putRawString(os.str());
 	pkt << p.collisiondetection;
 
@@ -1857,6 +1861,26 @@ void Server::SendAddParticleSpawner(session_t peer_id, u16 protocol_version,
 				writeF32(os, k.t);
 				writeU32(os, k.color.color);
 			}
+
+			ParticleParamTypes::serializeParameterValue(os, (u16)p.size_over_lifetime.size());
+			for (const auto &k : p.size_over_lifetime) {
+				writeF32(os, k.t);
+				writeF32(os, k.size);
+			}
+
+			p.initial_rotation.serialize(os);
+			p.rotation_speed.serialize(os);
+			writeF32(os, p.drag_coefficient);
+
+			ParticleParamTypes::serializeParameterValue(os, p.spawn_shape);
+			writeF32(os, p.spawn_shape_opts.radius);
+			writeF32(os, p.spawn_shape_opts.angle);
+			writeV3F32(os, p.spawn_shape_opts.axis);
+			writeV3F32(os, p.spawn_shape_opts.box_dims);
+
+			ParticleParamTypes::serializeParameterValue(os, p.velocity_direction);
+			writeV3F32(os, p.velocity_custom_dir);
+
 			writeU8(os, p.on_particle_collide ? 1 : 0);
 
 			pkt.putRawString(os.str());

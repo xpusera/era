@@ -161,11 +161,53 @@ int ModApiParticles::l_add_particle(lua_State *L)
 
 		p.node_tile = getintfield_default(L, 1, "node_tile", p.node_tile);
 
+		lua_getfield(L, 1, "size_over_lifetime");
+		if (lua_istable(L, -1)) {
+			size_t n = lua_objlen(L, -1);
+			p.size_over_lifetime.clear();
+			p.size_over_lifetime.reserve(n);
+			for (size_t i = 0; i < n; i++) {
+				lua_pushinteger(L, i + 1);
+				lua_gettable(L, -2);
+				luaL_checktype(L, -1, LUA_TTABLE);
+
+				ParticleSpawnerParameters::SizeOverLifetimeKeyframe k;
+				k.t = getfloatfield_default(L, -1, "t", 0.0f);
+				k.size = getfloatfield_default(L, -1, "size", 1.0f);
+				p.size_over_lifetime.push_back(k);
+				lua_pop(L, 1);
+			}
+			std::sort(p.size_over_lifetime.begin(), p.size_over_lifetime.end(),
+					[](const auto &a, const auto &b) { return a.t < b.t; });
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "initial_rotation");
+		LuaParticleParams::readLuaValue(L, p.initial_rotation);
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "rotation_speed");
+		LuaParticleParams::readLuaValue(L, p.rotation_speed);
+		lua_pop(L, 1);
+
+		p.drag_coefficient = getfloatfield_default(L, 1, "drag", 0.0f);
+
+		lua_getfield(L, 1, "texture_animation");
+		if (lua_istable(L, -1)) {
+			p.animation.type = TAT_SHEET_2D;
+			p.animation.sheet_2d.frames_w = getintfield_default(L, -1, "frames_x", 1);
+			p.animation.sheet_2d.frames_h = getintfield_default(L, -1, "frames_y", 1);
+			p.animation.sheet_2d.frame_length = 1.0f / (f32)getintfield_default(L, -1, "fps", 1);
+		}
+		lua_pop(L, 1);
+
 		playername = getstringfield_default(L, 1, "playername", "");
 
 		lua_getfield(L, 1, "drag");
 		if (lua_istable(L, -1))
 			p.drag = check_v3f(L, -1);
+		else if (lua_isnumber(L, -1))
+			p.drag_coefficient = lua_tonumber(L, -1);
 		lua_pop(L, 1);
 
 		lua_getfield(L, 1, "jitter");
@@ -234,14 +276,21 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 		LuaParticleParams::readTweenTable(L, "acc", p.acc);
 		LuaParticleParams::readTweenTable(L, "size", p.size);
 		LuaParticleParams::readTweenTable(L, "exptime", p.exptime);
-		LuaParticleParams::readTweenTable(L, "drag", p.drag);
+
+		lua_getfield(L, 1, "drag");
+		if (lua_isnumber(L, -1))
+			p.drag_coefficient = lua_tonumber(L, -1);
+		else
+			LuaParticleParams::readTweenTable(L, "drag", p.drag);
+		lua_pop(L, 1);
+
 		LuaParticleParams::readTweenTable(L, "jitter", p.jitter);
 		LuaParticleParams::readTweenTable(L, "bounce", p.bounce);
 		lua_getfield(L, 1, "attract");
 		if (!lua_isnil(L, -1)) {
 			luaL_checktype(L, -1, LUA_TTABLE);
 			lua_getfield(L, -1, "kind");
-			LuaParticleParams::readLuaValue(L, p.attractor_kind);
+		LuaParticleParams::readLuaValue(L, p.attractor_kind);
 			lua_pop(L,1);
 
 			lua_getfield(L, -1, "die_on_contact");
@@ -351,6 +400,76 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 
 		p.node_tile = getintfield_default(L, 1, "node_tile", p.node_tile);
 
+		lua_getfield(L, 1, "spawn_shape");
+		if (lua_isstring(L, -1)) {
+			std::string s = lua_tostring(L, -1);
+			if (s == "sphere") p.spawn_shape = ParticleSpawnerParameters::SpawnShape::sphere;
+			else if (s == "box") p.spawn_shape = ParticleSpawnerParameters::SpawnShape::box;
+			else if (s == "cone") p.spawn_shape = ParticleSpawnerParameters::SpawnShape::cone;
+			else if (s == "ring") p.spawn_shape = ParticleSpawnerParameters::SpawnShape::ring;
+			else p.spawn_shape = ParticleSpawnerParameters::SpawnShape::point;
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "spawn_shape_opts");
+		if (lua_istable(L, -1)) {
+			p.spawn_shape_opts.radius = getfloatfield_default(L, -1, "radius", 0.0f);
+			p.spawn_shape_opts.angle = getfloatfield_default(L, -1, "angle", 0.0f);
+			lua_getfield(L, -1, "axis");
+			if (lua_istable(L, -1)) p.spawn_shape_opts.axis = check_v3f(L, -1);
+			lua_pop(L, 1);
+			lua_getfield(L, -1, "box_dims");
+			if (lua_istable(L, -1)) p.spawn_shape_opts.box_dims = check_v3f(L, -1);
+			lua_pop(L, 1);
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "velocity");
+		if (lua_istable(L, -1)) {
+			lua_getfield(L, -1, "direction");
+			if (lua_isstring(L, -1)) {
+				std::string s = lua_tostring(L, -1);
+				if (s == "sphere") p.velocity_direction = ParticleSpawnerParameters::VelocityDirection::sphere;
+				else if (s == "cone_forward") p.velocity_direction = ParticleSpawnerParameters::VelocityDirection::cone_forward;
+				else if (s == "up") p.velocity_direction = ParticleSpawnerParameters::VelocityDirection::up;
+				else p.velocity_direction = ParticleSpawnerParameters::VelocityDirection::custom;
+			} else if (lua_istable(L, -1)) {
+				p.velocity_direction = ParticleSpawnerParameters::VelocityDirection::custom;
+				p.velocity_custom_dir = check_v3f(L, -1);
+			}
+			lua_pop(L, 1);
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "size_over_lifetime");
+		if (lua_istable(L, -1)) {
+			size_t n = lua_objlen(L, -1);
+			p.size_over_lifetime.clear();
+			p.size_over_lifetime.reserve(n);
+			for (size_t i = 0; i < n; i++) {
+				lua_pushinteger(L, i + 1);
+				lua_gettable(L, -2);
+				luaL_checktype(L, -1, LUA_TTABLE);
+
+				ParticleSpawnerParameters::SizeOverLifetimeKeyframe k;
+				k.t = getfloatfield_default(L, -1, "t", 0.0f);
+				k.size = getfloatfield_default(L, -1, "size", 1.0f);
+				p.size_over_lifetime.push_back(k);
+				lua_pop(L, 1);
+			}
+			std::sort(p.size_over_lifetime.begin(), p.size_over_lifetime.end(),
+					[](const auto &a, const auto &b) { return a.t < b.t; });
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "initial_rotation");
+		LuaParticleParams::readLuaValue(L, p.initial_rotation);
+		lua_pop(L, 1);
+
+		lua_getfield(L, 1, "rotation_speed");
+		LuaParticleParams::readLuaValue(L, p.rotation_speed);
+		lua_pop(L, 1);
+
 		// meta parameters
 		playername = getstringfield_default(L, 1, "playername", "");
 		not_playername = getstringfield_default(L, 1, "exclude_player", "");
@@ -390,6 +509,10 @@ int ModApiParticles::l_add_particlespawner(lua_State *L)
 	if (on_spawn_ref != LUA_NOREF && on_collide_ref != LUA_NOREF) {
 		luaL_unref(L, LUA_REGISTRYINDEX, on_collide_ref);
 		throw LuaError("add_particlespawner: on_particle_collide is not supported with on_particle_spawn");
+	}
+
+	if (on_spawn_ref != LUA_NOREF && p.spawn_shape != ParticleSpawnerParameters::SpawnShape::point) {
+		throw LuaError("add_particlespawner: on_particle_spawn is incompatible with native spawn shapes (cone, sphere, ring, box)");
 	}
 
 	p.on_particle_collide = (on_collide_ref != LUA_NOREF);

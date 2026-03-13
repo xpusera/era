@@ -78,6 +78,9 @@ Particle::Particle(
 		m_pos(p.pos),
 		m_velocity(p.vel),
 		m_acceleration(p.acc),
+		m_rotation(p.initial_rotation),
+		m_rotation_speed(p.rotation_speed),
+		m_size(p.size),
 		m_p(p),
 
 		m_parent(parent),
@@ -106,15 +109,22 @@ void Particle::step(float dtime, ClientEnvironment *env)
 {
 	m_time += dtime;
 
-	if (m_parent && m_parent->hasColorOverLifetime() && m_expiration > 0.0f) {
-		float t = m_time / (m_expiration + 0.0001f);
-		t = std::clamp(t, 0.0f, 1.0f);
-		m_base_color = m_parent->sampleColorOverLifetime(t);
+	float t_lifetime = (m_expiration > 0.0f) ? std::clamp(m_time / m_expiration, 0.0f, 1.0f) : 1.0f;
+
+	if (m_parent && m_parent->hasColorOverLifetime()) {
+		m_base_color = m_parent->sampleColorOverLifetime(t_lifetime);
 	} else {
 		m_base_color = m_initial_color;
 	}
 
+	if (m_parent && m_parent->hasSizeOverLifetime()) {
+		m_size = m_parent->sampleSizeOverLifetime(t_lifetime);
+	}
+
+	m_rotation += m_rotation_speed * dtime;
+
 	// apply drag (not handled by collisionMoveSimple) and brownian motion
+	m_velocity *= (1.0f - m_p.drag_coefficient * dtime);
 	v3f av = vecAbsolute(m_velocity);
 	av -= av * (m_p.drag * dtime);
 	m_velocity = av*vecSign(m_velocity) + v3f(m_p.jitter.pickWithin())*dtime;
@@ -270,7 +280,7 @@ void Particle::updateVertices(ClientEnvironment *env, video::SColor color)
 		ty1 = m_texpos.Y + m_texsize.Y;
 	}
 
-	auto half = m_p.size * .5f,
+	auto half = m_size * .5f,
 	     hx   = half * scale.X,
 	     hy   = half * scale.Y;
 	vertices[0] = video::S3DVertex(-hx, -hy,
@@ -281,6 +291,11 @@ void Particle::updateVertices(ClientEnvironment *env, video::SColor color)
 		0, 0, 0, 0, color, tx1, ty0);
 	vertices[3] = video::S3DVertex(-hx, hy,
 		0, 0, 0, 0, color, tx0, ty0);
+
+	if (std::abs(m_rotation) > 0.001f) {
+		for (u16 i = 0; i < 4; i++)
+			vertices[i].Pos.rotateXYBy(m_rotation);
+	}
 
 	// Update position -- see #10398
 	auto *player = env->getLocalPlayer();
@@ -351,6 +366,29 @@ video::SColor ParticleSpawner::sampleColorOverLifetime(float t) const
 		}
 	}
 	return keys.back().color;
+}
+
+float ParticleSpawner::sampleSizeOverLifetime(float t) const
+{
+	const auto &keys = p.size_over_lifetime;
+	if (keys.empty())
+		return p.size.start.pickWithin(); // Fallback to base size range
+	if (t <= keys.front().t)
+		return keys.front().size;
+	if (t >= keys.back().t)
+		return keys.back().size;
+
+	for (size_t i = 1; i < keys.size(); i++) {
+		if (t <= keys[i].t) {
+			const auto &a = keys[i - 1];
+			const auto &b = keys[i];
+			float dt = b.t - a.t;
+			float f = dt > 0.0f ? (t - a.t) / dt : 1.0f;
+			f = std::clamp(f, 0.0f, 1.0f);
+			return a.size + (b.size - a.size) * f;
+		}
+	}
+	return keys.back().size;
 }
 
 /*
@@ -450,6 +488,10 @@ void ParticleSpawner::spawnParticle(ClientEnvironment *env, float radius,
 	ParticleParameters pp;
 	pp.pos = pos;
 
+	pp.initial_rotation = p.initial_rotation.pickWithin();
+	pp.rotation_speed = p.rotation_speed.pickWithin();
+	pp.drag_coefficient = p.drag_coefficient;
+
 	pp.vel = r_vel.pickWithin();
 	pp.acc = r_acc.pickWithin();
 	pp.drag = r_drag.pickWithin();
@@ -474,17 +516,121 @@ void ParticleSpawner::spawnParticle(ClientEnvironment *env, float radius,
 
 	pp.expirationtime = r_exp.pickWithin();
 
-	if (sphere_radius != v3f()) {
-		f32 l = sphere_radius.getLength();
-		v3f mag = sphere_radius;
-		mag.normalize();
+	// Spawn Shape
+	switch (p.spawn_shape) {
+	case ParticleSpawnerParameters::SpawnShape::sphere: {
+		f32 r = p.spawn_shape_opts.radius;
+		v3f ofs(r, 0, 0);
+		ofs.rotateXZBy(myrand_range(0.f, 360.f));
+		ofs.rotateYZBy(myrand_range(0.f, 360.f));
+		ofs.rotateXYBy(myrand_range(0.f, 360.f));
+		pp.pos += ofs;
+		break;
+	}
+	case ParticleSpawnerParameters::SpawnShape::cone: {
+		f32 r = p.spawn_shape_opts.radius;
+		f32 angle = p.spawn_shape_opts.angle * core::DEGTORAD;
+		v3f axis = p.spawn_shape_opts.axis;
+		if (axis.getLengthSQ() < 0.0001f) axis = v3f(0, 0, 1);
+		axis.normalize();
 
-		v3f ofs = v3f(l,0,0);
-		ofs.rotateXZBy(myrand_range(0.f,360.f));
-		ofs.rotateYZBy(myrand_range(0.f,360.f));
-		ofs.rotateXYBy(myrand_range(0.f,360.f));
+		// Random point in circle
+		f32 current_r = r * std::sqrt(myrand_float());
+		f32 theta = myrand_range(0.f, 2.0f * M_PI);
+		v3f p_circle(current_r * std::cos(theta), current_r * std::sin(theta), 0);
 
-		pp.pos += ofs * mag;
+		// Random angle within cone
+		f32 phi = myrand_range(0.f, angle);
+		p_circle.rotateYZBy(phi * core::RADTODEG);
+
+		// Align to axis
+		core::quaternion q;
+		q.rotationFromTo(v3f(0, 0, 1), axis);
+		pp.pos += q * p_circle;
+		break;
+	}
+	case ParticleSpawnerParameters::SpawnShape::ring: {
+		f32 r = p.spawn_shape_opts.radius;
+		v3f axis = p.spawn_shape_opts.axis;
+		if (axis.getLengthSQ() < 0.0001f) axis = v3f(0, 0, 1);
+		axis.normalize();
+
+		f32 theta = myrand_range(0.f, 360.f);
+		v3f p_ring(r, 0, 0);
+		p_ring.rotateXYBy(theta);
+
+		core::quaternion q;
+		q.rotationFromTo(v3f(0, 1, 0), axis);
+		pp.pos += q * p_ring;
+		break;
+	}
+	case ParticleSpawnerParameters::SpawnShape::box: {
+		v3f d = p.spawn_shape_opts.box_dims;
+		pp.pos += v3f(
+			myrand_range(-d.X/2, d.X/2),
+			myrand_range(-d.Y/2, d.Y/2),
+			myrand_range(-d.Z/2, d.Z/2)
+		);
+		break;
+	}
+	case ParticleSpawnerParameters::SpawnShape::point:
+	default:
+		if (sphere_radius != v3f()) {
+			f32 l = sphere_radius.getLength();
+			v3f mag = sphere_radius;
+			mag.normalize();
+
+			v3f ofs = v3f(l,0,0);
+			ofs.rotateXZBy(myrand_range(0.f,360.f));
+			ofs.rotateYZBy(myrand_range(0.f,360.f));
+			ofs.rotateXYBy(myrand_range(0.f,360.f));
+
+			pp.pos += ofs * mag;
+		}
+		break;
+	}
+
+	// Velocity Direction
+	switch (p.velocity_direction) {
+	case ParticleSpawnerParameters::VelocityDirection::sphere: {
+		f32 speed = pp.vel.getLength();
+		v3f v(speed, 0, 0);
+		v.rotateXZBy(myrand_range(0.f, 360.f));
+		v.rotateYZBy(myrand_range(0.f, 360.f));
+		v.rotateXYBy(myrand_range(0.f, 360.f));
+		pp.vel = v;
+		break;
+	}
+	case ParticleSpawnerParameters::VelocityDirection::cone_forward: {
+		f32 speed = pp.vel.getLength();
+		// For simplicity, "forward" here means Z+ in local space if not attached,
+		// or bone-forward if attached (already handled by matrix).
+		v3f axis(0, 0, 1);
+		f32 angle = 15.0f; // Default if not specified, could be added to opts
+		if (p.spawn_shape == ParticleSpawnerParameters::SpawnShape::cone)
+			angle = p.spawn_shape_opts.angle;
+
+		v3f v(0, 0, speed);
+		v.rotateYZBy(myrand_range(-angle, angle));
+		v.rotateXZBy(myrand_range(0.f, 360.f));
+		pp.vel = v;
+		break;
+	}
+	case ParticleSpawnerParameters::VelocityDirection::up: {
+		f32 speed = pp.vel.getLength();
+		pp.vel = v3f(0, speed, 0);
+		break;
+	}
+	case ParticleSpawnerParameters::VelocityDirection::custom: {
+		f32 speed = pp.vel.getLength();
+		v3f dir = p.velocity_custom_dir;
+		if (dir.getLengthSQ() < 0.0001f) dir = v3f(0, 1, 0);
+		pp.vel = dir.normalize() * speed;
+		break;
+	}
+	case ParticleSpawnerParameters::VelocityDirection::none:
+	default:
+		break;
 	}
 
 	if (p.attractor_kind != ParticleParamTypes::AttractorKind::none && attract != 0) {

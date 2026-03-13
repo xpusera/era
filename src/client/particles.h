@@ -114,6 +114,9 @@ private:
 	v3f m_pos;
 	v3f m_velocity;
 	v3f m_acceleration;
+	float m_rotation = 0.0f;
+	float m_rotation_speed = 0.0f;
+	float m_size = 1.0f;
 
 	const ParticleParameters m_p;
 
@@ -145,6 +148,9 @@ public:
 
 	bool hasColorOverLifetime() const { return !p.color_over_lifetime.empty(); }
 	video::SColor sampleColorOverLifetime(float t) const;
+
+	bool hasSizeOverLifetime() const { return !p.size_over_lifetime.empty(); }
+	float sampleSizeOverLifetime(float t) const;
 
 	bool getExpired() const
 	{ return p.amount <= 0 && p.time != 0; }

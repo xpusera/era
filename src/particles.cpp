@@ -249,6 +249,10 @@ void ParticleParameters::serialize(std::ostream &os, u16 protocol_ver) const
 	bounce.serialize(os);
 	texture.serialize(os, protocol_ver, true, true);
 	writeU8(os, static_cast<u8>(face_camera));
+
+	writeF32(os, initial_rotation);
+	writeF32(os, rotation_speed);
+	writeF32(os, drag_coefficient);
 }
 
 void ParticleParameters::deSerialize(std::istream &is, u16 protocol_ver)
@@ -294,4 +298,10 @@ void ParticleParameters::deSerialize(std::istream &is, u16 protocol_ver)
 	face_camera = static_cast<CommonParticleParams::FacingMode>(readU8(is));
 	if (static_cast<u8>(face_camera) > static_cast<u8>(CommonParticleParams::FacingMode::world))
 		face_camera = CommonParticleParams::FacingMode::rotate_xyz;
+
+	if (!canRead(is))
+		return;
+	initial_rotation = readF32(is);
+	rotation_speed = readF32(is);
+	drag_coefficient = readF32(is);
 }

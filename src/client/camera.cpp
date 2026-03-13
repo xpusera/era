@@ -95,6 +95,26 @@ f32 Camera::easeT(f32 t, ServerEaseType type)
 		f32 u = t - 1.0f;
 		return 1.0f + c3 * u * u * u + c1 * u * u;
 	}
+	case ServerEaseType::in_back: {
+		constexpr f32 c1 = 1.70158f;
+		constexpr f32 c3 = c1 + 1.0f;
+		return c3 * t * t * t - c1 * t * t;
+	}
+	case ServerEaseType::in_out_back: {
+		constexpr f32 c1 = 1.70158f;
+		constexpr f32 c2 = c1 * 1.525f;
+		if (t < 0.5f) {
+			return (pow(2.0f * t, 2.0f) * ((c2 + 1.0f) * 2.0f * t - c2)) / 2.0f;
+		} else {
+			return (pow(2.0f * t - 2.0f, 2.0f) * ((c2 + 1.0f) * (t * 2.0f - 2.0f) + c2) + 2.0f) / 2.0f;
+		}
+	}
+	case ServerEaseType::out_elastic: {
+		if (t == 0.0f) return 0.0f;
+		if (t == 1.0f) return 1.0f;
+		constexpr f32 c4 = (2.0f * M_PI) / 3.0f;
+		return pow(2.0f, -10.0f * t) * sin((t * 10.0f - 0.75f) * c4) + 1.0f;
+	}
 	}
 	return t;
 }

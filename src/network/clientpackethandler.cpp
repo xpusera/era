@@ -1150,6 +1150,36 @@ void Client::handleCommand_AddParticleSpawner(NetworkPacket* pkt)
 
 				if (!canRead(is))
 					break;
+				u16 sizer_sz;
+				ParticleParamTypes::deSerializeParameterValue(is, sizer_sz);
+				p.size_over_lifetime.clear();
+				p.size_over_lifetime.reserve(sizer_sz);
+				for (u16 i = 0; i < sizer_sz; ++i) {
+					ParticleSpawnerParameters::SizeOverLifetimeKeyframe k;
+					k.t = readF32(is);
+					k.size = readF32(is);
+					p.size_over_lifetime.push_back(k);
+				}
+				std::sort(p.size_over_lifetime.begin(), p.size_over_lifetime.end(),
+						[](const auto &a, const auto &b) { return a.t < b.t; });
+
+				p.initial_rotation.deSerialize(is);
+				p.rotation_speed.deSerialize(is);
+				p.drag_coefficient = readF32(is);
+
+				if (!canRead(is))
+					break;
+				ParticleParamTypes::deSerializeParameterValue(is, p.spawn_shape);
+				p.spawn_shape_opts.radius = readF32(is);
+				p.spawn_shape_opts.angle = readF32(is);
+				p.spawn_shape_opts.axis = readV3F32(is);
+				p.spawn_shape_opts.box_dims = readV3F32(is);
+
+				ParticleParamTypes::deSerializeParameterValue(is, p.velocity_direction);
+				p.velocity_custom_dir = readV3F32(is);
+
+				if (!canRead(is))
+					break;
 				p.on_particle_collide = readU8(is) != 0;
 			} while(0);
 

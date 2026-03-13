@@ -304,6 +304,8 @@ struct ParticleParameters : CommonParticleParams
 {
 	v3f pos, vel, acc, drag;
 	f32 size = 1, expirationtime = 1;
+	f32 initial_rotation = 0, rotation_speed = 0;
+	f32 drag_coefficient = 0.0f;
 	ParticleParamTypes::f32Range bounce;
 	ParticleParamTypes::v3fRange jitter;
 
@@ -340,13 +342,50 @@ struct ParticleSpawnerParameters : CommonParticleParams
 	// Fork extensions
 	std::string attached_bone;
 	v3f attached_offset = v3f();
+
 	struct ColorOverLifetimeKeyframe {
 		f32 t = 0.0f; // normalized age [0..1]
 		video::SColor color = video::SColor(255, 255, 255, 255);
 	};
 	std::vector<ColorOverLifetimeKeyframe> color_over_lifetime;
 
+	struct SizeOverLifetimeKeyframe {
+		f32 t = 0.0f; // normalized age [0..1]
+		f32 size = 1.0f;
+	};
+	std::vector<SizeOverLifetimeKeyframe> size_over_lifetime;
+
+	ParticleParamTypes::f32Range initial_rotation;
+	ParticleParamTypes::f32Range rotation_speed;
+	f32 drag_coefficient = 0.0f;
+
 	bool on_particle_collide = false;
+
+	enum class SpawnShape : u8 {
+		point = 0,
+		sphere = 1,
+		box = 2,
+		cone = 3,
+		ring = 4,
+	};
+	SpawnShape spawn_shape = SpawnShape::point;
+
+	struct SpawnShapeOpts {
+		f32 radius = 0.0f;
+		f32 angle = 0.0f;
+		v3f axis = v3f(0, 0, 1);
+		v3f box_dims = v3f(1, 1, 1);
+	} spawn_shape_opts;
+
+	enum class VelocityDirection : u8 {
+		none = 0,
+		sphere = 1,
+		cone_forward = 2,
+		up = 3,
+		custom = 4,
+	};
+	VelocityDirection velocity_direction = VelocityDirection::none;
+	v3f velocity_custom_dir = v3f(0, 1, 0);
 
 	// For historical reasons no (de-)serialization methods here
 };

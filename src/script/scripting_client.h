@@ -30,6 +30,7 @@ public:
 	void on_client_ready(LocalPlayer *localplayer);
 	void on_camera_ready(Camera *camera);
 	void on_minimap_ready(Minimap *minimap);
+	void on_camera_fade_hold() { ScriptApiClient::on_camera_fade_hold(); }
 
 protected:
 	// from ScriptApiSecurity:

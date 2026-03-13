@@ -32,6 +32,12 @@ namespace {
 			return 3;
 		if (t == "out_back")
 			return 4;
+		if (t == "in_back")
+			return 5;
+		if (t == "in_out_back")
+			return 6;
+		if (t == "out_elastic")
+			return 7;
 		return 0;
 	}
 
