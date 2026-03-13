@@ -222,22 +222,8 @@ void Camera::updateServerCameraOverride(f32 dtime, v3f *pos, v3f *dir, v3f *up)
 
 	if (preset == ServerPreset::free) {
 		*pos = m_server_spec.free_pos * BS;
-		if (m_server_spec.free_orient_type == 1) {
-			v3f facing = m_server_spec.free_orient * BS;
-			*dir = facing - *pos;
-			if (dir->getLengthSQ() > 0.000001f)
-				dir->normalize();
-			else
-				*dir = v3f(0, 0, 1);
-		} else {
-			v3f rot = m_server_spec.free_orient;
-			v3f d(0, 0, 1);
-			d.rotateYZBy(rot.X);
-			d.rotateXZBy(rot.Y);
-			if (d.getLengthSQ() > 0.000001f)
-				d.normalize();
-			*dir = d;
-		}
+		// Rotation is set once in applyServerCameraSet and held here.
+		*dir = m_server_free_dir;
 		return;
 	}
 
@@ -289,7 +275,25 @@ void Camera::applyServerCameraSet(const ServerSetSpec &spec)
 	case ServerPreset::third_person_front:
 		m_camera_mode = CAMERA_MODE_THIRD_FRONT;
 		break;
-	case ServerPreset::free:
+	case ServerPreset::free: {
+		m_camera_mode = CAMERA_MODE_THIRD;
+		v3f pos = spec.free_pos * BS;
+		v3f dir(0, 0, 1);
+		if (spec.free_orient_type == 1) {
+			v3f facing = spec.free_orient * BS;
+			dir = facing - pos;
+		} else {
+			v3f rot = spec.free_orient;
+			dir.rotateYZBy(rot.X);
+			dir.rotateXZBy(rot.Y);
+		}
+		if (dir.getLengthSQ() > 0.000001f)
+			dir.normalize();
+		else
+			dir = v3f(0, 0, 1);
+		m_server_free_dir = dir;
+		break;
+	}
 	case ServerPreset::follow_orbit:
 		m_camera_mode = CAMERA_MODE_THIRD;
 		break;

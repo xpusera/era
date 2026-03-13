@@ -338,6 +338,9 @@ private:
 		// Spectator camera position in node units.
 		v3f m_spectator_pos_nodes = v3f();
 
+		// Computed and held direction for "free" preset.
+		v3f m_server_free_dir = v3f(0, 0, 1);
+
 	struct {
 		bool active = false;
 		f32 duration = 0.0f;

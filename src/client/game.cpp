@@ -1991,6 +1991,9 @@ bool Game::isTouchShootlineUsed() const
 
 void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 {
+	if (camera->isServerInputLocked() && !camera->isServerSpectatorActive())
+		return;
+
 	if (g_touchcontrols) {
 		// User setting is already applied by TouchControls.
 		f32 sens_scale = getSensitivityScaleFactor();
@@ -2140,8 +2143,6 @@ void Game::updatePlayerControl(const CameraOrientation &cam, float dtime)
 				control.zoom = false;
 				control.dig = false;
 				control.place = false;
-				control.pitch = player->getPitch();
-				control.yaw = player->getYaw();
 			}
 
 			if (camera->isServerSpectatorActive()) {
@@ -2618,7 +2619,15 @@ void Game::updateCameraFade(f32 dtime)
 {
 	if (!m_camera_fade.active)
 		return;
+
+	const f32 old_t = m_camera_fade.t;
 	m_camera_fade.t += dtime;
+
+	if (old_t < m_camera_fade.fade_in && m_camera_fade.t >= m_camera_fade.fade_in) {
+		// Callback fires exactly when fade_in completes (hold phase STARTS)
+		client->getScript()->on_camera_fade_hold();
+	}
+
 	const f32 total = m_camera_fade.fade_in + m_camera_fade.hold + m_camera_fade.fade_out;
 	if (total <= 0.0f) {
 		m_camera_fade.active = false;

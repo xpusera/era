@@ -2147,7 +2147,7 @@ void Server::SendCameraControlSetFollowOrbit(session_t peer_id, f32 ease_time, u
 	bool lock_input, u8 target_type, const v3f &target_pos, u16 target_object_id,
 	f32 radius, f32 yaw_offset, f32 pitch_offset, const v3f &view_offset)
 {
-	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1, peer_id);
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 1 + 1 + 4 + 1 + 1 + 1 + (target_type == 0 ? 12 : 2) + 4 + 4 + 4 + 12, peer_id);
 	const u8 type = 0;
 	const u8 preset = 4;
 	pkt << type << preset << ease_time << ease_type << (u8)(lock_input ? 1 : 0);
@@ -2277,12 +2277,18 @@ void Server::SendPlayerFov(session_t peer_id)
 	if (!player)
 		return;
 
-	NetworkPacket pkt(TOCLIENT_FOV, 4 + 1 + 4, peer_id);
-
 	PlayerFovSpec fov_spec = player->getFov();
-	pkt << fov_spec.fov << fov_spec.is_multiplier << fov_spec.transition_time;
 
-	Send(&pkt);
+	if (LATEST_PROTOCOL_VERSION >= 42) {
+		NetworkPacket pkt(TOCLIENT_FOV, 4 + 1 + 4, peer_id);
+		pkt << fov_spec.fov << fov_spec.is_multiplier << fov_spec.transition_time;
+		Send(&pkt);
+	} else {
+		// Legacy FOV packet if needed, but Luanti typically uses TOCLIENT_FOV for a long time.
+		NetworkPacket pkt(TOCLIENT_FOV, 4 + 1 + 4, peer_id);
+		pkt << fov_spec.fov << fov_spec.is_multiplier << fov_spec.transition_time;
+		Send(&pkt);
+	}
 }
 
 void Server::SendLocalPlayerAnimations(session_t peer_id, v2f animation_frames[4],
