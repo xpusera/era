@@ -127,6 +127,9 @@ private:
 	// get_animation(self)
 	static int l_get_animation(lua_State *L);
 
+	// get_animation_info(self)
+	static int l_get_animation_info(lua_State *L);
+
 	// set_bone_position(self, bone, position, rotation)
 	static int l_set_bone_position(lua_State *L);
 

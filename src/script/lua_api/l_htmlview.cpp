@@ -7,14 +7,17 @@
 #include "lua_api/l_internal.h"
 #include "cpp_api/s_security.h"
 
+#include <memory>
+
 
 	#ifdef __ANDROID__
 	#include "htmlview_jni.h"
 	#include <cctype>
 	#include <limits>
-	#include <json/json.h>
-	#include "convert_json.h"
-	#endif
+		#include <json/json.h>
+		#include "convert_json.h"
+		#include "common/c_content.h"
+		#endif
 
 static constexpr const char *HTMLVIEW_CALLBACKS_RKEY = "HTMLVIEW_CALLBACKS";
 static constexpr const char *HTMLVIEW_JSON_CALLBACKS_RKEY = "HTMLVIEW_JSON_CALLBACKS";
@@ -291,6 +294,65 @@ int ModApiHTMLView::l_input(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_state(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+
+#ifdef __ANDROID__
+	std::string json = htmlview_jni_state(id);
+	if (json.empty()) {
+		lua_pushnil(L);
+		return 1;
+	}
+	Json::Value root;
+	{
+		Json::CharReaderBuilder builder;
+		builder.settings_["stackLimit"] = HTMLVIEW_MAX_JSON_DEPTH;
+		builder.settings_["collectComments"] = false;
+		const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+		std::string errmsg;
+		if (!reader->parse(json.data(), json.data() + json.size(), &root, &errmsg)) {
+			lua_pushnil(L);
+			return 1;
+		}
+	}
+	if (!push_json_value(L, root, 0)) {
+		lua_pushnil(L);
+		return 1;
+	}
+	return 1;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_reload(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+
+#ifdef __ANDROID__
+	htmlview_jni_reload(id);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_focus(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+
+#ifdef __ANDROID__
+	htmlview_jni_focus(id);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
@@ -392,6 +454,9 @@ void ModApiHTMLView::Initialize(lua_State *L, int top)
 		registerFunction(L, "pipe", l_pipe, tbl);
 		registerFunction(L, "capture", l_capture, tbl);
 		registerFunction(L, "input", l_input, tbl);
+		registerFunction(L, "state", l_state, tbl);
+		registerFunction(L, "reload", l_reload, tbl);
+		registerFunction(L, "focus", l_focus, tbl);
 		registerFunction(L, "on_message", l_on_message, tbl);
 		registerFunction(L, "on_message_json", l_on_message_json, tbl);
 		registerFunction(L, "on_capture", l_on_capture, tbl);

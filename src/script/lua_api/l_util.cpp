@@ -32,6 +32,7 @@
 #include "tiniergltf.hpp"
 #include <cstdio>
 #include <cstring>
+#include <unordered_set>
 
 // only available in zstd 1.3.5+
 #ifndef ZSTD_CLEVEL_DEFAULT
@@ -318,6 +319,126 @@ int ModApiUtil::l_gltf_get_animation_clips(lua_State *L)
 
 		lua_rawseti(L, out, idx_out++);
 	}
+
+	return 1;
+}
+
+int ModApiUtil::l_gltf_inspect(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string path = readParam<std::string>(L, 1);
+	CHECK_SECURE_PATH(L, path.c_str(), false);
+
+	std::string data;
+	if (!fs::ReadFile(path, data, true))
+		return luaL_error(L, "gltf_inspect: failed to read '%s'", path.c_str());
+
+	std::optional<tiniergltf::GlTF> model;
+	try {
+		if (str_ends_with(path, ".glb"))
+			model.emplace(tiniergltf::readGlb(data.data(), data.size()));
+		else
+			model.emplace(tiniergltf::readGlTF(data.data(), data.size()));
+	} catch (const std::exception &e) {
+		lua_pushnil(L);
+		lua_pushstring(L, e.what());
+		return 2;
+	}
+
+	const auto &m = *model;
+
+	lua_createtable(L, 0, 3);
+
+	// meshes
+	lua_newtable(L);
+	if (m.meshes.has_value()) {
+		int outi = 1;
+		for (size_t i = 0; i < m.meshes->size(); ++i) {
+			const auto &mesh = m.meshes->at(i);
+			std::string name = mesh.name.has_value() ? *mesh.name : ("mesh_" + std::to_string(i));
+			lua_createtable(L, 0, 3);
+			lua_pushinteger(L, (lua_Integer)i);
+			lua_setfield(L, -2, "index");
+			lua_pushlstring(L, name.c_str(), name.size());
+			lua_setfield(L, -2, "name");
+			lua_pushinteger(L, (lua_Integer)mesh.primitives.size());
+			lua_setfield(L, -2, "primitives");
+			lua_rawseti(L, -2, outi++);
+		}
+	}
+	lua_setfield(L, -2, "meshes");
+
+	// bones (unique joint nodes across skins)
+	lua_newtable(L);
+	std::unordered_set<size_t> joint_nodes;
+	if (m.skins.has_value()) {
+		for (const auto &skin : *m.skins) {
+			for (size_t node : skin.joints) {
+				joint_nodes.insert(node);
+			}
+		}
+	}
+	int outb = 1;
+	for (size_t node : joint_nodes) {
+		std::string name;
+		if (m.nodes.has_value() && node < m.nodes->size()) {
+			const auto &n = m.nodes->at(node);
+			name = n.name.has_value() ? *n.name : ("bone_" + std::to_string(node));
+		} else {
+			name = "bone_" + std::to_string(node);
+		}
+		lua_createtable(L, 0, 2);
+		lua_pushinteger(L, (lua_Integer)node);
+		lua_setfield(L, -2, "node");
+		lua_pushlstring(L, name.c_str(), name.size());
+		lua_setfield(L, -2, "name");
+		lua_rawseti(L, -2, outb++);
+	}
+	lua_setfield(L, -2, "bones");
+
+	// animations
+	lua_newtable(L);
+	if (m.animations.has_value()) {
+		int outa = 1;
+		for (size_t ai = 0; ai < m.animations->size(); ++ai) {
+			const auto &anim = m.animations->at(ai);
+			float min_time = std::numeric_limits<float>::infinity();
+			float max_time = 0.0f;
+			for (const auto &channel : anim.channels) {
+				if (channel.sampler >= anim.samplers.size())
+					continue;
+				const auto &sampler = anim.samplers[channel.sampler];
+				float first = 0.0f;
+				float last = 0.0f;
+				std::string err;
+				if (!read_gltf_accessor_first_last_f32(m, sampler.input, &first, &last, &err))
+					continue;
+				min_time = std::min(min_time, first);
+				max_time = std::max(max_time, last);
+			}
+			if (min_time == std::numeric_limits<float>::infinity()) {
+				min_time = 0.0f;
+				max_time = 0.0f;
+			}
+			float duration = max_time - min_time;
+			if (duration < 0.0f)
+				duration = 0.0f;
+			std::string name = anim.name.has_value() ? *anim.name : ("animation_" + std::to_string(ai));
+			lua_createtable(L, 0, 5);
+			lua_pushinteger(L, (lua_Integer)ai);
+			lua_setfield(L, -2, "index");
+			lua_pushlstring(L, name.c_str(), name.size());
+			lua_setfield(L, -2, "name");
+			lua_pushnumber(L, 0.0);
+			lua_setfield(L, -2, "start");
+			lua_pushnumber(L, duration);
+			lua_setfield(L, -2, "end");
+			lua_pushnumber(L, duration);
+			lua_setfield(L, -2, "duration");
+			lua_rawseti(L, -2, outa++);
+		}
+	}
+	lua_setfield(L, -2, "animations");
 
 	return 1;
 }
@@ -886,6 +1007,7 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 	API_FCT(parse_json);
 	API_FCT(write_json);
 	API_FCT(gltf_get_animation_clips);
+	API_FCT(gltf_inspect);
 
 	API_FCT(get_tool_wear_after_use);
 	API_FCT(get_dig_params);
@@ -946,6 +1068,7 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 	API_FCT(parse_json);
 	API_FCT(write_json);
 	API_FCT(gltf_get_animation_clips);
+	API_FCT(gltf_inspect);
 
 	API_FCT(is_yes);
 
@@ -982,6 +1105,7 @@ void ModApiUtil::InitializeSSCSM(lua_State *L, int top)
 	API_FCT(parse_json);
 	API_FCT(write_json);
 	API_FCT(gltf_get_animation_clips);
+	API_FCT(gltf_inspect);
 
 	API_FCT(is_yes);
 
@@ -1014,6 +1138,7 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	API_FCT(parse_json);
 	API_FCT(write_json);
 	API_FCT(gltf_get_animation_clips);
+	API_FCT(gltf_inspect);
 
 	API_FCT(is_yes);
 

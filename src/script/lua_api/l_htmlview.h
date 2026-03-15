@@ -21,6 +21,9 @@ private:
 	static int l_pipe(lua_State *L);
 	static int l_capture(lua_State *L);
 	static int l_input(lua_State *L);
+	static int l_state(lua_State *L);
+	static int l_reload(lua_State *L);
+	static int l_focus(lua_State *L);
 	static int l_on_message(lua_State *L);
 	static int l_on_message_json(lua_State *L);
 	static int l_on_capture(lua_State *L);

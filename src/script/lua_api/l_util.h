@@ -40,6 +40,9 @@ private:
 	// gltf_get_animation_clips(path)
 	static int l_gltf_get_animation_clips(lua_State *L);
 
+	// gltf_inspect(path)
+	static int l_gltf_inspect(lua_State *L);
+
 	// get_tool_wear_after_use(uses[, initial_wear])
 	static int l_get_tool_wear_after_use(lua_State *L);
 

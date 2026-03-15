@@ -174,6 +174,22 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_input(id, blockGameInput);
 	}
 
+	public String htmlview_state(String id) {
+		if (mHtmlViewManager != null)
+			return mHtmlViewManager.htmlview_state(id);
+		return "";
+	}
+
+	public void htmlview_reload(String id) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_reload(id);
+	}
+
+	public void htmlview_focus(String id) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_focus(id);
+	}
+
 	public void htmlview_send(String id, String message) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_send(id, message);

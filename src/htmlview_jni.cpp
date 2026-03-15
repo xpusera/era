@@ -205,6 +205,33 @@ static void callVoidMethod1Str1Bool(const char *method_name, const std::string &
 	env->DeleteLocalRef(activityClass);
 }
 
+static std::string callStringMethod1Str(const char *method_name, const std::string &a)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return "";
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name,
+		"(Ljava/lang/String;)Ljava/lang/String;");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return "";
+	}
+
+	jstring ja = env->NewStringUTF(a.c_str());
+	jstring jr = (jstring)env->CallObjectMethod(activity, mid, ja);
+	if (ja)
+		env->DeleteLocalRef(ja);
+	std::string r = readJavaString(env, jr);
+	if (jr)
+		env->DeleteLocalRef(jr);
+	env->DeleteLocalRef(activityClass);
+	return r;
+}
+
 void htmlview_jni_run(const std::string &id, const std::string &html)
 {
 	callVoidMethod2Str("htmlview_run", id, html);
@@ -235,6 +262,21 @@ void htmlview_jni_stop(const std::string &id)
 void htmlview_jni_shutdown_all()
 {
 	callVoidMethod0("htmlview_shutdown_all");
+}
+
+void htmlview_jni_reload(const std::string &id)
+{
+	callVoidMethod1Str("htmlview_reload", id);
+}
+
+void htmlview_jni_focus(const std::string &id)
+{
+	callVoidMethod1Str("htmlview_focus", id);
+}
+
+std::string htmlview_jni_state(const std::string &id)
+{
+	return callStringMethod1Str("htmlview_state", id);
 }
 
 void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,

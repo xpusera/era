@@ -44,6 +44,8 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @Keep
 @SuppressWarnings({"unused", "WeakerAccess"})
@@ -89,6 +91,8 @@ public class HTMLViewManager {
 			HtmlViewState st = getOrCreate(id, true);
 			st.externalRootDir = null;
 			st.externalEntry = null;
+			st.lastHtml = html;
+			st.ready = false;
 			String injected = injectBridge(html);
 			st.webView.loadDataWithBaseURL(st.baseUrl, injected, "text/html", "utf-8", null);
 		});
@@ -99,6 +103,8 @@ public class HTMLViewManager {
 			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = null;
 			st.externalEntry = null;
+			st.lastHtml = html;
+			st.ready = false;
 			String injected = injectBridge(html);
 			st.webView.loadDataWithBaseURL(st.baseUrl, injected, "text/html", "utf-8", null);
 		});
@@ -109,6 +115,8 @@ public class HTMLViewManager {
 			HtmlViewState st = getOrCreate(id, true);
 			st.externalRootDir = rootDir;
 			st.externalEntry = normalizeEntry(entry);
+			st.lastHtml = null;
+			st.ready = false;
 			st.webView.loadUrl(st.baseUrl + st.externalEntry);
 		});
 	}
@@ -118,7 +126,60 @@ public class HTMLViewManager {
 			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = rootDir;
 			st.externalEntry = normalizeEntry(entry);
+			st.lastHtml = null;
+			st.ready = false;
 			st.webView.loadUrl(st.baseUrl + st.externalEntry);
+		});
+	}
+
+	public String htmlview_state(String id) {
+		if (Looper.myLooper() == Looper.getMainLooper()) {
+			return buildStateJson(id);
+		}
+		final String[] out = new String[1];
+		CountDownLatch latch = new CountDownLatch(1);
+		activity.runOnUiThread(() -> {
+			try {
+				out[0] = buildStateJson(id);
+			} finally {
+				latch.countDown();
+			}
+		});
+		try {
+			latch.await(2, TimeUnit.SECONDS);
+		} catch (InterruptedException ignored) {
+		}
+		return out[0] != null ? out[0] : "";
+	}
+
+	public void htmlview_reload(String id) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = views.get(id);
+			if (st == null)
+				return;
+			st.ready = false;
+			if (st.externalRootDir != null && st.externalEntry != null) {
+				st.webView.loadUrl(st.baseUrl + st.externalEntry);
+				return;
+			}
+			if (st.lastHtml != null) {
+				String injected = injectBridge(st.lastHtml);
+				st.webView.loadDataWithBaseURL(st.baseUrl, injected, "text/html", "utf-8", null);
+				return;
+			}
+			st.webView.reload();
+		});
+	}
+
+	public void htmlview_focus(String id) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = views.get(id);
+			if (st == null || !st.attachedToRoot)
+				return;
+			if (st.inputShield != null && st.inputShield.getVisibility() == View.VISIBLE)
+				st.inputShield.bringToFront();
+			st.container.bringToFront();
+			root.invalidate();
 		});
 	}
 
@@ -761,6 +822,12 @@ public class HTMLViewManager {
 				return null;
 			}
 		}
+
+		@Override
+		public void onPageFinished(WebView view, String url) {
+			st.ready = true;
+			updateInputShieldVisibility(st);
+		}
 	}
 
 	private static class HtmlViewState {
@@ -779,6 +846,8 @@ public class HTMLViewManager {
 
 		String externalRootDir;
 		String externalEntry;
+		String lastHtml;
+		boolean ready;
 
 		boolean lastSafeArea = true;
 		boolean lastFullscreen = false;
@@ -794,6 +863,22 @@ public class HTMLViewManager {
 			this.baseUrl = baseUrl;
 			this.container = container;
 			this.webView = webView;
+		}
+	}
+
+	private String buildStateJson(String id) {
+		try {
+			HtmlViewState st = views.get(id);
+			JSONObject o = new JSONObject();
+			o.put("exists", st != null);
+			if (st == null)
+				return o.toString();
+			o.put("worker", !st.attachedToRoot);
+			o.put("visible", st.attachedToRoot && st.container.getVisibility() == View.VISIBLE);
+			o.put("ready", st.ready);
+			return o.toString();
+		} catch (Exception e) {
+			return "";
 		}
 	}
 

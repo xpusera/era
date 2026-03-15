@@ -3,6 +3,8 @@ core.animator = M
 
 M._event_listeners = {}
 
+M._end_watchers = {}
+
 function M.register_on_event(cb)
 	assert(type(cb) == "function")
 	table.insert(M._event_listeners, cb)
@@ -16,6 +18,34 @@ function M.unregister_on_event(cb)
 		end
 	end
 	return false
+end
+
+local function anim_sig(obj)
+	local range, speed, blend, loop, clip = obj:get_animation()
+	local rx = range and (range.x or range[1]) or 0
+	local ry = range and (range.y or range[2]) or 0
+	return table.concat({tostring(rx), tostring(ry), tostring(speed), tostring(blend), tostring(loop), tostring(clip)}, ":")
+end
+
+function M.on_animation_end(obj, cb)
+	assert(obj and obj.is_valid and obj:is_valid())
+	assert(type(cb) == "function")
+	local now = core.get_us_time and core.get_us_time() or 0
+	M._end_watchers[obj] = {
+		cb = cb,
+		sig = anim_sig(obj),
+		start_us = now,
+		end_us = nil,
+	}
+	return obj
+end
+
+function M.cancel_on_animation_end(obj)
+	M._end_watchers[obj] = nil
+end
+
+if not core.on_animation_end then
+	core.on_animation_end = M.on_animation_end
 end
 
 local RAD = math.rad
@@ -493,6 +523,36 @@ end
 
 if INIT == "game" and core.register_globalstep then
 	core.register_globalstep(function(dtime)
+		local now = core.get_us_time and core.get_us_time() or 0
+		for obj, w in pairs(M._end_watchers) do
+			if not obj or not obj.is_valid or not obj:is_valid() then
+				M._end_watchers[obj] = nil
+			else
+				local sig = anim_sig(obj)
+				if sig ~= w.sig then
+					w.sig = sig
+					w.start_us = now
+					w.end_us = nil
+				end
+				if w.end_us == nil then
+					local range, speed, _, loop = obj:get_animation()
+					local rx = range and (range.x or range[1]) or 0
+					local ry = range and (range.y or range[2]) or 0
+					local sp = speed or 0
+					if loop == false and sp ~= 0 and ry > rx then
+						local dur = (ry - rx) / math.abs(sp)
+						w.end_us = w.start_us + math.floor(dur * 1000000)
+					end
+				end
+				if w.end_us and now >= w.end_us then
+					local cb = w.cb
+					M._end_watchers[obj] = nil
+					if type(cb) == "function" then
+						cb(obj)
+					end
+				end
+			end
+		end
 		for anim, _ in pairs(registry) do
 			if not anim:is_valid() then
 				registry[anim] = nil
@@ -518,4 +578,67 @@ function M.create(object, def)
 		end
 	end
 	return anim
+end
+
+function M.humanoid(object, clips, opts)
+	opts = opts or {}
+	clips = clips or {}
+	local walk_th = opts.walk_threshold or 0.05
+	local run_th = opts.run_threshold or 2.5
+
+	local function mk_state(v, fallback_loop)
+		if type(v) == "table" then
+			return {
+				clip = v.clip,
+				range = v.range,
+				speed = v.speed,
+				loop = v.loop,
+				blend = v.blend,
+				events = v.events,
+			}
+		end
+		if v == nil then
+			return {clip = nil, range = {x = 0, y = 0}, speed = 15, loop = fallback_loop, blend = 0}
+		end
+		return {clip = v, range = {x = 0, y = 0}, speed = 15, loop = fallback_loop, blend = 0}
+	end
+
+	local states = {
+		idle = mk_state(clips.idle, true),
+		walk = mk_state(clips.walk, true),
+		run = mk_state(clips.run, true),
+		jump = mk_state(clips.jump, false),
+		attack = mk_state(clips.attack, false),
+	}
+
+	local transitions = {
+		{ from = "*", to = "attack", priority = 100, condition = function(ctx)
+			return ctx and ctx.attack
+		end },
+		{ from = "*", to = "jump", priority = 90, condition = function(ctx)
+			return ctx and ctx.jumping
+		end },
+		{ from = "*", to = "run", priority = 10, condition = function(ctx)
+			return ctx and not ctx.attack and not ctx.jumping and (ctx.hs or 0) >= run_th
+		end },
+		{ from = "*", to = "walk", priority = 5, condition = function(ctx)
+			local hs = ctx and (ctx.hs or 0) or 0
+			return ctx and not ctx.attack and not ctx.jumping and hs >= walk_th and hs < run_th
+		end },
+		{ from = "*", to = "idle", priority = 0, condition = function(ctx)
+			return ctx and not ctx.attack and not ctx.jumping and (ctx.hs or 0) < walk_th
+		end },
+	}
+
+	local def = {
+		states = states,
+		transitions = transitions,
+		initial = opts.initial or "idle",
+		get_context = opts.get_context,
+		on_event = opts.on_event,
+		on_step = opts.on_step,
+		initial_blend = opts.initial_blend,
+	}
+
+	return M.create(object, def)
 end

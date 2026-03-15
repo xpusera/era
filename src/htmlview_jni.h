@@ -17,6 +17,9 @@ class ServerScripting;
 			const std::string &entry);
 	void htmlview_jni_stop(const std::string &id);
 	void htmlview_jni_shutdown_all();
+	void htmlview_jni_reload(const std::string &id);
+	void htmlview_jni_focus(const std::string &id);
+	std::string htmlview_jni_state(const std::string &id);
 	void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 			bool visible, bool fullscreen, bool safe_area,
 			bool drag_embed, float border_radius);

@@ -411,6 +411,64 @@ int ObjectRef::l_set_animation(lua_State *L)
 	if (sao == nullptr)
 		return 0;
 
+	if (lua_istable(L, 2)) {
+		int opts = 2;
+		v2f frame_range(1, 1);
+		float frame_speed = 15.0f;
+		float frame_blend = 0.0f;
+		bool frame_loop = true;
+
+		if (getboolfield_default(L, opts, "pause", false) || getboolfield_default(L, opts, "paused", false))
+			frame_speed = 0.0f;
+
+		lua_getfield(L, opts, "frame");
+		if (lua_isnumber(L, -1)) {
+			float f = (float)lua_tonumber(L, -1);
+			frame_range = v2f(f, f);
+		}
+		lua_pop(L, 1);
+
+		lua_getfield(L, opts, "range");
+		if (lua_isnil(L, -1)) {
+			lua_pop(L, 1);
+			lua_getfield(L, opts, "frame_range");
+		}
+		if (!lua_isnil(L, -1))
+			frame_range = read_v2f(L, -1);
+		lua_pop(L, 1);
+
+		frame_speed = getfloatfield_default(L, opts, "speed", frame_speed);
+		frame_speed = getfloatfield_default(L, opts, "frame_speed", frame_speed);
+		float speed_scale = getfloatfield_default(L, opts, "speed_scale", 1.0f);
+		frame_speed *= speed_scale;
+
+		frame_blend = getfloatfield_default(L, opts, "blend", frame_blend);
+		frame_blend = getfloatfield_default(L, opts, "frame_blend", frame_blend);
+
+		frame_loop = getboolfield_default(L, opts, "loop", frame_loop);
+		frame_loop = getboolfield_default(L, opts, "frame_loop", frame_loop);
+
+		lua_getfield(L, opts, "clip");
+		if (lua_isnumber(L, -1)) {
+			lua_Number n = lua_tonumber(L, -1);
+			if (n < 0)
+				return luaL_error(L, "clip index must be >= 0");
+			sao->setAnimationClipByIndex((u16)n, frame_range, frame_speed, frame_blend, frame_loop);
+			lua_pop(L, 1);
+			return 0;
+		}
+		if (lua_isstring(L, -1)) {
+			std::string clip_name = readParam<std::string>(L, -1);
+			sao->setAnimationClipByName(clip_name, frame_range, frame_speed, frame_blend, frame_loop);
+			lua_pop(L, 1);
+			return 0;
+		}
+		lua_pop(L, 1);
+
+		sao->setAnimation(frame_range, frame_speed, frame_blend, frame_loop);
+		return 0;
+	}
+
 	v2f frame_range   = readParam<v2f>(L,  2, v2f(1, 1));
 	float frame_speed = readParam<float>(L, 3, 15.0f);
 	float frame_blend = readParam<float>(L, 4, 0.0f);
@@ -488,6 +546,61 @@ int ObjectRef::l_get_animation(lua_State *L)
 		lua_pushnil(L);
 
 	return 5;
+}
+
+int ObjectRef::l_get_animation_info(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	ServerActiveObject *sao = getobject(ref);
+	if (sao == nullptr)
+		return 0;
+
+	v2f frames = v2f(1, 1);
+	float frame_speed = 15;
+	float frame_blend = 0;
+	bool frame_loop = true;
+	
+	sao->getAnimation(&frames, &frame_speed, &frame_blend, &frame_loop);
+
+	u8 clip_type = 0;
+	u16 clip_index = 0;
+	std::string clip_name;
+	sao->getAnimationClip(&clip_type, &clip_index, &clip_name);
+
+	lua_createtable(L, 0, 10);
+	push_v2f(L, frames);
+	lua_setfield(L, -2, "range");
+	lua_pushnumber(L, frame_speed);
+	lua_setfield(L, -2, "speed");
+	lua_pushnumber(L, frame_blend);
+	lua_setfield(L, -2, "blend");
+	lua_pushboolean(L, frame_loop);
+	lua_setfield(L, -2, "loop");
+
+	if (clip_type == 1) {
+		lua_pushinteger(L, clip_index);
+		lua_setfield(L, -2, "clip");
+	} else if (clip_type == 2) {
+		lua_pushlstring(L, clip_name.c_str(), clip_name.size());
+		lua_setfield(L, -2, "clip");
+	} else {
+		lua_pushnil(L);
+		lua_setfield(L, -2, "clip");
+	}
+
+	float dur = 0.0f;
+	if (frame_speed != 0.0f && frames.Y > frames.X)
+		dur = (frames.Y - frames.X) / std::fabs(frame_speed);
+	lua_pushnumber(L, dur);
+	lua_setfield(L, -2, "duration");
+
+	lua_pushnil(L);
+	lua_setfield(L, -2, "progress");
+	lua_pushnil(L);
+	lua_setfield(L, -2, "bones");
+
+	return 1;
 }
 
 // set_local_animation(self, idle, walk, dig, walk_while_dig, frame_speed)
@@ -2963,10 +3076,11 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, set_wielded_item),
 	luamethod(ObjectRef, set_armor_groups),
 	luamethod(ObjectRef, get_armor_groups),
-	luamethod(ObjectRef, set_animation),
-	luamethod(ObjectRef, set_animation_clip),
-	luamethod(ObjectRef, get_animation),
-	luamethod(ObjectRef, set_animation_frame_speed),
+		luamethod(ObjectRef, set_animation),
+		luamethod(ObjectRef, set_animation_clip),
+		luamethod(ObjectRef, get_animation),
+		luamethod(ObjectRef, get_animation_info),
+		luamethod(ObjectRef, set_animation_frame_speed),
 	luamethod(ObjectRef, set_bone_position),
 	luamethod(ObjectRef, set_bone_rotation),
 	luamethod(ObjectRef, get_bone_position),
