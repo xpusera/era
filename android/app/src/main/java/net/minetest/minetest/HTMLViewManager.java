@@ -65,7 +65,13 @@ public class HTMLViewManager {
 		activity.runOnUiThread(() -> {
 			for (HtmlViewState st : views.values()) {
 				try {
-					root.removeView(st.container);
+					if (st.attachedToRoot)
+						root.removeView(st.container);
+				} catch (Exception ignored) {
+				}
+				try {
+					if (st.attachedToRoot && st.inputShield != null)
+						root.removeView(st.inputShield);
 				} catch (Exception ignored) {
 				}
 				try {
@@ -80,7 +86,17 @@ public class HTMLViewManager {
 
 	public void htmlview_run(String id, String html) {
 		activity.runOnUiThread(() -> {
-			HtmlViewState st = getOrCreate(id);
+			HtmlViewState st = getOrCreate(id, true);
+			st.externalRootDir = null;
+			st.externalEntry = null;
+			String injected = injectBridge(html);
+			st.webView.loadDataWithBaseURL(st.baseUrl, injected, "text/html", "utf-8", null);
+		});
+	}
+
+	public void htmlview_run_worker(String id, String html) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = null;
 			st.externalEntry = null;
 			String injected = injectBridge(html);
@@ -90,7 +106,16 @@ public class HTMLViewManager {
 
 	public void htmlview_run_external(String id, String rootDir, String entry) {
 		activity.runOnUiThread(() -> {
-			HtmlViewState st = getOrCreate(id);
+			HtmlViewState st = getOrCreate(id, true);
+			st.externalRootDir = rootDir;
+			st.externalEntry = normalizeEntry(entry);
+			st.webView.loadUrl(st.baseUrl + st.externalEntry);
+		});
+	}
+
+	public void htmlview_run_external_worker(String id, String rootDir, String entry) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = getOrCreate(id, false);
 			st.externalRootDir = rootDir;
 			st.externalEntry = normalizeEntry(entry);
 			st.webView.loadUrl(st.baseUrl + st.externalEntry);
@@ -103,7 +128,13 @@ public class HTMLViewManager {
 			if (st == null)
 				return;
 			try {
-				root.removeView(st.container);
+				if (st.attachedToRoot)
+					root.removeView(st.container);
+			} catch (Exception ignored) {
+			}
+			try {
+				if (st.attachedToRoot && st.inputShield != null)
+					root.removeView(st.inputShield);
 			} catch (Exception ignored) {
 			}
 			try {
@@ -113,15 +144,29 @@ public class HTMLViewManager {
 		});
 	}
 
+	public void htmlview_input(String id, boolean blockGameInput) {
+		activity.runOnUiThread(() -> {
+			HtmlViewState st = views.get(id);
+			if (st == null || !st.attachedToRoot)
+				return;
+			st.blockGameInput = blockGameInput;
+			ensureInputShield(st);
+			updateInputShieldVisibility(st);
+		});
+	}
+
 	public void htmlview_display(String id, int x, int y, int width, int height,
-								boolean visible, boolean fullscreen, boolean safe_area,
-								boolean drag_embed, float border_radius) {
+									boolean visible, boolean fullscreen, boolean safe_area,
+									boolean drag_embed, float border_radius) {
 		activity.runOnUiThread(() -> {
 			HtmlViewState st = views.get(id);
 			if (st == null)
 				return;
+			if (!st.attachedToRoot)
+				return;
 
 			st.container.setVisibility(visible ? View.VISIBLE : View.GONE);
+			updateInputShieldVisibility(st);
 			if (!visible)
 				return;
 
@@ -309,7 +354,7 @@ public class HTMLViewManager {
 		}
 	}
 
-	private HtmlViewState getOrCreate(String id) {
+	private HtmlViewState getOrCreate(String id, boolean attachToRoot) {
 		HtmlViewState existing = views.get(id);
 		if (existing != null)
 			return existing;
@@ -326,6 +371,7 @@ public class HTMLViewManager {
 		wv.setBackgroundColor(Color.TRANSPARENT);
 
 		HtmlViewState st = new HtmlViewState(id, host, baseUrl, container, wv);
+		st.attachedToRoot = attachToRoot;
 
 		wv.setWebViewClient(new LocalContentClient(st));
 		wv.setWebChromeClient(new WebChromeClient() {
@@ -377,10 +423,39 @@ public class HTMLViewManager {
 		lp.gravity = Gravity.TOP | Gravity.START;
 		lp.leftMargin = 0;
 		lp.topMargin = 0;
-		root.addView(container, lp);
+		if (attachToRoot)
+			root.addView(container, lp);
 
 		views.put(id, st);
 		return st;
+	}
+
+	private void ensureInputShield(HtmlViewState st) {
+		if (st.inputShield != null)
+			return;
+		View shield = new View(activity);
+		shield.setVisibility(View.GONE);
+		shield.setBackgroundColor(Color.TRANSPARENT);
+		shield.setClickable(true);
+		shield.setOnTouchListener((v, ev) -> true);
+
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+		lp.gravity = Gravity.TOP | Gravity.START;
+		int idx = root.indexOfChild(st.container);
+		if (idx < 0) {
+			root.addView(shield, lp);
+			st.container.bringToFront();
+		} else {
+			root.addView(shield, idx, lp);
+		}
+		st.inputShield = shield;
+	}
+
+	private void updateInputShieldVisibility(HtmlViewState st) {
+		if (!st.attachedToRoot || st.inputShield == null)
+			return;
+		boolean show = st.blockGameInput && st.container.getVisibility() == View.VISIBLE;
+		st.inputShield.setVisibility(show ? View.VISIBLE : View.GONE);
 	}
 
 	private void setupDrag(HtmlViewState st) {
@@ -524,7 +599,7 @@ public class HTMLViewManager {
 	}
 
 	private static String injectBridge(String html) {
-		String bridge = "<script>(function(){var _native=window.luanti;window.luanti={};luanti._messageCallbacks=[];luanti.on_message=function(cb){if(typeof cb==='function'){luanti._messageCallbacks.push(cb);}};luanti._trigger=function(msg){for(var i=0;i<luanti._messageCallbacks.length;i++){try{luanti._messageCallbacks[i](msg);}catch(e){}}};luanti.send=function(msg){try{if(_native&&_native.send){_native.send(String(msg));}}catch(e){}};})();</script>";
+		String bridge = "<script>(function(){var _native=window.luanti;window.luanti={};luanti._messageCallbacks=[];luanti.on_message=function(cb){if(typeof cb==='function'){luanti._messageCallbacks.push(cb);}};luanti.on_message_json=function(cb){if(typeof cb==='function'){luanti._messageCallbacks.push(function(m){try{cb(JSON.parse(m),m);}catch(e){cb(null,m,String(e&&e.message||e));}});}};luanti._trigger=function(msg){for(var i=0;i<luanti._messageCallbacks.length;i++){try{luanti._messageCallbacks[i](msg);}catch(e){}}};luanti.send=function(msg){try{if(_native&&_native.send){_native.send(String(msg));}}catch(e){}};luanti.send_json=function(obj){try{luanti.send(JSON.stringify(obj));}catch(e){luanti.send(String(obj));}};})();</script>";
 		if (html == null)
 			return bridge;
 
@@ -694,6 +769,9 @@ public class HTMLViewManager {
 		final String baseUrl;
 		final FrameLayout container;
 		final WebView webView;
+		boolean attachedToRoot = true;
+		boolean blockGameInput = false;
+		View inputShield;
 
 		View dragBar;
 		boolean dragEnabled;

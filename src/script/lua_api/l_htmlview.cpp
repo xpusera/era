@@ -8,14 +8,19 @@
 #include "cpp_api/s_security.h"
 
 
-#ifdef __ANDROID__
-#include "htmlview_jni.h"
-#include <cctype>
-#include <limits>
-#endif
+	#ifdef __ANDROID__
+	#include "htmlview_jni.h"
+	#include <cctype>
+	#include <limits>
+	#include <json/json.h>
+	#include "convert_json.h"
+	#endif
 
 static constexpr const char *HTMLVIEW_CALLBACKS_RKEY = "HTMLVIEW_CALLBACKS";
+static constexpr const char *HTMLVIEW_JSON_CALLBACKS_RKEY = "HTMLVIEW_JSON_CALLBACKS";
 static constexpr const char *HTMLVIEW_CAPTURE_CALLBACKS_RKEY = "HTMLVIEW_CAPTURE_CALLBACKS";
+
+static constexpr u16 HTMLVIEW_MAX_JSON_DEPTH = 1024;
 
 #ifdef __ANDROID__
 static constexpr int CENTER_SENTINEL = std::numeric_limits<int>::min();
@@ -43,8 +48,22 @@ int ModApiHTMLView::l_run(lua_State *L)
 	std::string id = readParam<std::string>(L, 1);
 	std::string html = readParam<std::string>(L, 2);
 
+	#ifdef __ANDROID__
+		htmlview_jni_run(id, html);
+		return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_run_worker(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string html = readParam<std::string>(L, 2);
+
 #ifdef __ANDROID__
-	htmlview_jni_run(id, html);
+	htmlview_jni_run_worker(id, html);
 	return 0;
 #else
 	return luaL_error(L, "htmlview is only available on Android");
@@ -60,9 +79,27 @@ int ModApiHTMLView::l_run_external(lua_State *L)
 	if (!lua_isnoneornil(L, 3))
 		entry = readParam<std::string>(L, 3);
 
+	#ifdef __ANDROID__
+		CHECK_SECURE_PATH(L, root_dir.c_str(), false);
+		htmlview_jni_run_external(id, root_dir, entry);
+		return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_run_external_worker(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	std::string root_dir = readParam<std::string>(L, 2);
+	std::string entry = "index.html";
+	if (!lua_isnoneornil(L, 3))
+		entry = readParam<std::string>(L, 3);
+
 #ifdef __ANDROID__
 	CHECK_SECURE_PATH(L, root_dir.c_str(), false);
-	htmlview_jni_run_external(id, root_dir, entry);
+	htmlview_jni_run_external_worker(id, root_dir, entry);
 	return 0;
 #else
 	return luaL_error(L, "htmlview is only available on Android");
@@ -146,8 +183,28 @@ int ModApiHTMLView::l_send(lua_State *L)
 	std::string id = readParam<std::string>(L, 1);
 	std::string message = readParam<std::string>(L, 2);
 
+	#ifdef __ANDROID__
+		htmlview_jni_send(id, message);
+		return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
+int ModApiHTMLView::l_send_json(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+
 #ifdef __ANDROID__
-	htmlview_jni_send(id, message);
+	Json::Value root;
+	try {
+		read_json_value(L, root, 2, HTMLVIEW_MAX_JSON_DEPTH);
+	} catch (SerializationError &e) {
+		return luaL_error(L, "htmlview.send_json: %s", e.what());
+	}
+	std::string out = fastWriteJson(root);
+	htmlview_jni_send(id, out);
 	return 0;
 #else
 	return luaL_error(L, "htmlview is only available on Android");
@@ -219,6 +276,21 @@ int ModApiHTMLView::l_capture(lua_State *L)
 #endif
 }
 
+int ModApiHTMLView::l_input(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	luaL_checktype(L, 2, LUA_TTABLE);
+
+#ifdef __ANDROID__
+	bool block_game_input = getboolfield_default(L, 2, "block_game_input", false);
+	htmlview_jni_input(id, block_game_input);
+	return 0;
+#else
+	return luaL_error(L, "htmlview is only available on Android");
+#endif
+}
+
 
 int ModApiHTMLView::l_on_message(lua_State *L)
 {
@@ -234,6 +306,33 @@ int ModApiHTMLView::l_on_message(lua_State *L)
 		lua_newtable(L);
 		lua_pushvalue(L, -1);
 		lua_setfield(L, LUA_REGISTRYINDEX, HTMLVIEW_CALLBACKS_RKEY);
+	}
+
+	lua_pushlstring(L, id.c_str(), id.size());
+	if (clear)
+		lua_pushnil(L);
+	else
+		lua_pushvalue(L, 2);
+	lua_settable(L, -3);
+
+	lua_pop(L, 1);
+	return 0;
+}
+
+int ModApiHTMLView::l_on_message_json(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string id = readParam<std::string>(L, 1);
+	bool clear = lua_isnil(L, 2);
+	if (!clear)
+		luaL_checktype(L, 2, LUA_TFUNCTION);
+
+	lua_getfield(L, LUA_REGISTRYINDEX, HTMLVIEW_JSON_CALLBACKS_RKEY);
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		lua_newtable(L);
+		lua_pushvalue(L, -1);
+		lua_setfield(L, LUA_REGISTRYINDEX, HTMLVIEW_JSON_CALLBACKS_RKEY);
 	}
 
 	lua_pushlstring(L, id.c_str(), id.size());
@@ -276,21 +375,26 @@ int ModApiHTMLView::l_on_capture(lua_State *L)
 
 void ModApiHTMLView::Initialize(lua_State *L, int top)
 {
-#ifdef __ANDROID__
-	lua_newtable(L);
-	int tbl = lua_gettop(L);
+	#ifdef __ANDROID__
+		lua_newtable(L);
+		int tbl = lua_gettop(L);
 
-	registerFunction(L, "run", l_run, tbl);
-	registerFunction(L, "run_external", l_run_external, tbl);
-	registerFunction(L, "stop", l_stop, tbl);
-	registerFunction(L, "display", l_display, tbl);
-	registerFunction(L, "send", l_send, tbl);
-	registerFunction(L, "navigate", l_navigate, tbl);
-	registerFunction(L, "inject", l_inject, tbl);
-	registerFunction(L, "pipe", l_pipe, tbl);
-	registerFunction(L, "capture", l_capture, tbl);
-	registerFunction(L, "on_message", l_on_message, tbl);
-	registerFunction(L, "on_capture", l_on_capture, tbl);
+		registerFunction(L, "run", l_run, tbl);
+		registerFunction(L, "run_worker", l_run_worker, tbl);
+		registerFunction(L, "run_external", l_run_external, tbl);
+		registerFunction(L, "run_external_worker", l_run_external_worker, tbl);
+		registerFunction(L, "stop", l_stop, tbl);
+		registerFunction(L, "display", l_display, tbl);
+		registerFunction(L, "send", l_send, tbl);
+		registerFunction(L, "send_json", l_send_json, tbl);
+		registerFunction(L, "navigate", l_navigate, tbl);
+		registerFunction(L, "inject", l_inject, tbl);
+		registerFunction(L, "pipe", l_pipe, tbl);
+		registerFunction(L, "capture", l_capture, tbl);
+		registerFunction(L, "input", l_input, tbl);
+		registerFunction(L, "on_message", l_on_message, tbl);
+		registerFunction(L, "on_message_json", l_on_message_json, tbl);
+		registerFunction(L, "on_capture", l_on_capture, tbl);
 
 	lua_pushvalue(L, tbl);
 	lua_setglobal(L, "htmlview");

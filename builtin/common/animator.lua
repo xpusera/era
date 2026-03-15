@@ -1,6 +1,23 @@
 local M = {}
 core.animator = M
 
+M._event_listeners = {}
+
+function M.register_on_event(cb)
+	assert(type(cb) == "function")
+	table.insert(M._event_listeners, cb)
+end
+
+function M.unregister_on_event(cb)
+	for i, f in ipairs(M._event_listeners) do
+		if f == cb then
+			table.remove(M._event_listeners, i)
+			return true
+		end
+	end
+	return false
+end
+
 local RAD = math.rad
 local DEG = math.deg
 
@@ -337,15 +354,20 @@ function Animator:_step_events(dtime, ctx)
 					ctx = ctx,
 					data = ev.data,
 				}
-				if type(ev.callback) == "function" then
-					ev.callback(self, self.object, payload)
-				end
-				if type(cb) == "function" then
-					cb(self, self.object, payload)
+					if type(ev.callback) == "function" then
+						ev.callback(self, self.object, payload)
+					end
+					if type(cb) == "function" then
+						cb(self, self.object, payload)
+					end
+					for _, gcb in ipairs(M._event_listeners) do
+						if type(gcb) == "function" then
+							gcb(self, self.object, payload)
+						end
+					end
 				end
 			end
 		end
-	end
 
 	self.prev_frame = cur_frame
 end

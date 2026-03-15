@@ -643,6 +643,10 @@ void Server::stop()
 	m_thread->wait();
 
 	infostream<<"Server: Threads stopped"<<std::endl;
+
+#ifdef __ANDROID__
+	htmlview_jni_shutdown_all();
+#endif
 }
 
 void Server::step()

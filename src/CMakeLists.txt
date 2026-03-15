@@ -690,13 +690,14 @@ if(BUILD_CLIENT)
 		${extra_windows_SRCS}
 	)
 
-	target_link_libraries(
-		${PROJECT_NAME}
-		${ZLIB_LIBRARIES}
-		IrrlichtMt::IrrlichtMt
-		${ZSTD_LIBRARY}
-		${SOUND_LIBRARIES}
-		${SQLITE3_LIBRARY}
+		target_link_libraries(
+			${PROJECT_NAME}
+			${ZLIB_LIBRARIES}
+			IrrlichtMt::IrrlichtMt
+			tiniergltf::tiniergltf
+			${ZSTD_LIBRARY}
+			${SOUND_LIBRARIES}
+			${SQLITE3_LIBRARY}
 		${LUA_LIBRARY}
 		${GMP_LIBRARY}
 		${JSON_LIBRARY}

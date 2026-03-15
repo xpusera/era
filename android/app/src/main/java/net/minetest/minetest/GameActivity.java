@@ -131,14 +131,29 @@ public class GameActivity extends SDLActivity {
 		super.onDestroy();
 	}
 
+	public void htmlview_shutdown_all() {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.shutdown();
+	}
+
 	public void htmlview_run(String id, String html) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_run(id, html);
 	}
 
+	public void htmlview_run_worker(String id, String html) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_run_worker(id, html);
+	}
+
 	public void htmlview_run_external(String id, String rootDir, String entry) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_run_external(id, rootDir, entry);
+	}
+
+	public void htmlview_run_external_worker(String id, String rootDir, String entry) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_run_external_worker(id, rootDir, entry);
 	}
 
 	public void htmlview_stop(String id) {
@@ -152,6 +167,11 @@ public class GameActivity extends SDLActivity {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_display(id, x, y, width, height, visible, fullscreen, safe_area,
 				drag_embed, border_radius);
+	}
+
+	public void htmlview_input(String id, boolean blockGameInput) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_input(id, blockGameInput);
 	}
 
 	public void htmlview_send(String id, String message) {

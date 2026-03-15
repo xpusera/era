@@ -37,6 +37,9 @@ private:
 	// write_json(data[, styled])
 	static int l_write_json(lua_State *L);
 
+	// gltf_get_animation_clips(path)
+	static int l_gltf_get_animation_clips(lua_State *L);
+
 	// get_tool_wear_after_use(uses[, initial_wear])
 	static int l_get_tool_wear_after_use(lua_State *L);
 

@@ -138,7 +138,7 @@ static void callVoidMethod1Str(const char *method_name, const std::string &a)
 }
 
 static void callVoidMethod1Str2Int(const char *method_name, const std::string &a,
-		int b, int c)
+			int b, int c)
 {
 	JNIEnv *env;
 	jobject activity;
@@ -163,9 +163,56 @@ static void callVoidMethod1Str2Int(const char *method_name, const std::string &a
 	env->DeleteLocalRef(activityClass);
 }
 
+static void callVoidMethod0(const char *method_name)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return;
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name, "()V");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return;
+	}
+
+	env->CallVoidMethod(activity, mid);
+	env->DeleteLocalRef(activityClass);
+}
+
+static void callVoidMethod1Str1Bool(const char *method_name, const std::string &a, bool b)
+{
+	JNIEnv *env;
+	jobject activity;
+	jclass activityClass;
+	if (!getActivityEnv(&env, &activity, &activityClass))
+		return;
+
+	jmethodID mid = env->GetMethodID(activityClass, method_name, "(Ljava/lang/String;Z)V");
+	if (!mid) {
+		errorstream << "htmlview_jni: missing method " << method_name << std::endl;
+		env->DeleteLocalRef(activityClass);
+		return;
+	}
+
+	jstring ja = env->NewStringUTF(a.c_str());
+	jboolean jb = b;
+	env->CallVoidMethod(activity, mid, ja, jb);
+	if (ja)
+		env->DeleteLocalRef(ja);
+	env->DeleteLocalRef(activityClass);
+}
+
 void htmlview_jni_run(const std::string &id, const std::string &html)
 {
 	callVoidMethod2Str("htmlview_run", id, html);
+}
+
+void htmlview_jni_run_worker(const std::string &id, const std::string &html)
+{
+	callVoidMethod2Str("htmlview_run_worker", id, html);
 }
 
 void htmlview_jni_run_external(const std::string &id, const std::string &root_dir,
@@ -174,9 +221,20 @@ void htmlview_jni_run_external(const std::string &id, const std::string &root_di
 	callVoidMethod3Str("htmlview_run_external", id, root_dir, entry);
 }
 
+void htmlview_jni_run_external_worker(const std::string &id, const std::string &root_dir,
+		const std::string &entry)
+{
+	callVoidMethod3Str("htmlview_run_external_worker", id, root_dir, entry);
+}
+
 void htmlview_jni_stop(const std::string &id)
 {
 	callVoidMethod1Str("htmlview_stop", id);
+}
+
+void htmlview_jni_shutdown_all()
+{
+	callVoidMethod0("htmlview_shutdown_all");
 }
 
 void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
@@ -212,6 +270,11 @@ void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
 	if (jid)
 		env->DeleteLocalRef(jid);
 	env->DeleteLocalRef(activityClass);
+}
+
+void htmlview_jni_input(const std::string &id, bool block_game_input)
+{
+	callVoidMethod1Str1Bool("htmlview_input", id, block_game_input);
 }
 
 void htmlview_jni_send(const std::string &id, const std::string &message)

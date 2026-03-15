@@ -29,7 +29,9 @@
 #include "player.h"
 #include "daynightratio.h"
 #include "constants.h"
+#include "tiniergltf.hpp"
 #include <cstdio>
+#include <cstring>
 
 // only available in zstd 1.3.5+
 #ifndef ZSTD_CLEVEL_DEFAULT
@@ -94,6 +96,78 @@ int ModApiUtil::l_get_us_time_sscsm(lua_State *L)
 // Maximum depth of a JSON object:
 // Reading and writing should not overflow the Lua, C, or jsoncpp stacks.
 constexpr static u16 MAX_JSON_DEPTH = 1024;
+
+static bool read_gltf_accessor_first_last_f32(const tiniergltf::GlTF &model,
+		size_t accessor_idx, float *out_first, float *out_last, std::string *out_err)
+{
+	if (!model.accessors || !model.bufferViews || !model.buffers) {
+		if (out_err)
+			*out_err = "missing required fields";
+		return false;
+	}
+	if (accessor_idx >= model.accessors->size()) {
+		if (out_err)
+			*out_err = "invalid accessor index";
+		return false;
+	}
+	const auto &acc = model.accessors->at(accessor_idx);
+	if (acc.componentType != tiniergltf::Accessor::ComponentType::FLOAT ||
+			acc.type != tiniergltf::Accessor::Type::SCALAR) {
+		if (out_err)
+			*out_err = "unsupported accessor type";
+		return false;
+	}
+	if (acc.count == 0) {
+		if (out_first)
+			*out_first = 0.0f;
+		if (out_last)
+			*out_last = 0.0f;
+		return true;
+	}
+	if (!acc.bufferView.has_value()) {
+		if (out_err)
+			*out_err = "missing bufferView";
+		return false;
+	}
+	if (acc.sparse.has_value()) {
+		if (out_err)
+			*out_err = "sparse accessors are not supported";
+		return false;
+	}
+	const auto &bv = model.bufferViews->at(*acc.bufferView);
+	const auto &buf = model.buffers->at(bv.buffer);
+
+	size_t bv_off = bv.byteOffset;
+	size_t acc_off = acc.byteOffset;
+	size_t stride = bv.byteStride.value_or(sizeof(float));
+	if (stride < sizeof(float))
+		stride = sizeof(float);
+
+	auto read_at = [&](size_t i, float *out) -> bool {
+		size_t off = bv_off + acc_off + i * stride;
+		if (off + sizeof(float) > buf.data.size()) {
+			if (out_err)
+				*out_err = "accessor out of bounds";
+			return false;
+		}
+		float v;
+		std::memcpy(&v, buf.data.data() + off, sizeof(float));
+		*out = v;
+		return true;
+	};
+
+	float first = 0.0f;
+	float last = 0.0f;
+	if (!read_at(0, &first))
+		return false;
+	if (!read_at(acc.count - 1, &last))
+		return false;
+	if (out_first)
+		*out_first = first;
+	if (out_last)
+		*out_last = last;
+	return true;
+}
 
 // parse_json(str[, nullvalue, return_error])
 int ModApiUtil::l_parse_json(lua_State *L)
@@ -172,6 +246,79 @@ int ModApiUtil::l_write_json(lua_State *L)
 		out = fastWriteJson(root);
 	}
 	lua_pushlstring(L, out.c_str(), out.size());
+	return 1;
+}
+
+int ModApiUtil::l_gltf_get_animation_clips(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	std::string path = readParam<std::string>(L, 1);
+	CHECK_SECURE_PATH(L, path.c_str(), false);
+
+	std::string data;
+	if (!fs::ReadFile(path, data, true))
+		return luaL_error(L, "gltf_get_animation_clips: failed to read '%s'", path.c_str());
+
+	std::optional<tiniergltf::GlTF> model;
+	try {
+		if (str_ends_with(path, ".glb"))
+			model.emplace(tiniergltf::readGlb(data.data(), data.size()));
+		else
+			model.emplace(tiniergltf::readGlTF(data.data(), data.size()));
+	} catch (const std::exception &e) {
+		lua_pushnil(L);
+		lua_pushstring(L, e.what());
+		return 2;
+	}
+
+	const auto &m = *model;
+
+	lua_newtable(L);
+	int out = lua_gettop(L);
+	if (!m.animations.has_value())
+		return 1;
+
+	int idx_out = 1;
+	for (size_t ai = 0; ai < m.animations->size(); ++ai) {
+		const auto &anim = m.animations->at(ai);
+		float min_time = std::numeric_limits<float>::infinity();
+		float max_time = 0.0f;
+		for (const auto &channel : anim.channels) {
+			if (channel.sampler >= anim.samplers.size())
+				continue;
+			const auto &sampler = anim.samplers[channel.sampler];
+			float first = 0.0f;
+			float last = 0.0f;
+			std::string err;
+			if (!read_gltf_accessor_first_last_f32(m, sampler.input, &first, &last, &err))
+				continue;
+			min_time = std::min(min_time, first);
+			max_time = std::max(max_time, last);
+		}
+		if (min_time == std::numeric_limits<float>::infinity()) {
+			min_time = 0.0f;
+			max_time = 0.0f;
+		}
+		float duration = max_time - min_time;
+		if (duration < 0.0f)
+			duration = 0.0f;
+
+		std::string name = anim.name.has_value() ? *anim.name : ("animation_" + std::to_string(ai));
+		lua_createtable(L, 0, 5);
+		lua_pushinteger(L, (lua_Integer)ai);
+		lua_setfield(L, -2, "index");
+		lua_pushlstring(L, name.c_str(), name.size());
+		lua_setfield(L, -2, "name");
+		lua_pushnumber(L, 0.0);
+		lua_setfield(L, -2, "start");
+		lua_pushnumber(L, duration);
+		lua_setfield(L, -2, "end");
+		lua_pushnumber(L, duration);
+		lua_setfield(L, -2, "duration");
+
+		lua_rawseti(L, out, idx_out++);
+	}
+
 	return 1;
 }
 
@@ -738,6 +885,7 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 
 	API_FCT(parse_json);
 	API_FCT(write_json);
+	API_FCT(gltf_get_animation_clips);
 
 	API_FCT(get_tool_wear_after_use);
 	API_FCT(get_dig_params);
@@ -797,6 +945,7 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 
 	API_FCT(parse_json);
 	API_FCT(write_json);
+	API_FCT(gltf_get_animation_clips);
 
 	API_FCT(is_yes);
 
@@ -832,6 +981,7 @@ void ModApiUtil::InitializeSSCSM(lua_State *L, int top)
 
 	API_FCT(parse_json);
 	API_FCT(write_json);
+	API_FCT(gltf_get_animation_clips);
 
 	API_FCT(is_yes);
 
@@ -863,6 +1013,7 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 
 	API_FCT(parse_json);
 	API_FCT(write_json);
+	API_FCT(gltf_get_animation_clips);
 
 	API_FCT(is_yes);
 
