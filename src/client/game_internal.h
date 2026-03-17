@@ -108,6 +108,8 @@ public:
 
 	Client *getClient() { return client; }
 
+	float getFogRange() const { return runData.fog_range; }
+
 	// Pre-calculated value
 	int crack_animation_length;
 
