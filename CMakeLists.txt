@@ -54,7 +54,7 @@ endif()
 # - macOS on ARM: crashes, see <https://github.com/luanti-org/luanti/issues/14397>
 # Note: since CMake has no easy architecture detection disabling for Mac entirely
 #### ####
-if((WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR APPLE)
+if((WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR APPLE OR ANDROID)
 	set(DEFAULT_ENABLE_LTO FALSE)
 endif()
 set(ENABLE_LTO ${DEFAULT_ENABLE_LTO} CACHE BOOL "Use Link Time Optimization")

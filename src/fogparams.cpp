@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "network/networkpacket.h"
+#include "exceptions.h"
 
 static v3f normalize_or_default(const v3f &v, const v3f &def)
 {

@@ -18,13 +18,16 @@
 #include <iomanip>
 #include <unordered_map>
 
-#ifndef _WIN32
+#if defined(HAVE_ICONV)
 	#include <iconv.h>
-#else
+#elif !defined(_WIN32)
+	// fallback for non-windows if iconv is not found?
+	// but the current code relies on iconv.
+#elif defined(_WIN32)
 	#include <windows.h>
 #endif
 
-#ifndef _WIN32
+#if defined(HAVE_ICONV)
 
 namespace {
 	class IconvSmartPointer {
@@ -139,7 +142,7 @@ std::string wide_to_utf8(std::wstring_view input)
 	return out;
 }
 
-#else // _WIN32
+#elif defined(_WIN32)
 
 std::wstring utf8_to_wide(std::string_view input)
 {
@@ -165,7 +168,20 @@ std::string wide_to_utf8(std::wstring_view input)
 	return out;
 }
 
-#endif // _WIN32
+#else
+
+std::wstring utf8_to_wide(std::string_view input)
+{
+	// last resort fallback
+	return L"<iconv not available>";
+}
+
+std::string wide_to_utf8(std::wstring_view input)
+{
+	return "<iconv not available>";
+}
+
+#endif
 
 void wide_add_codepoint(std::wstring &result, char32_t codepoint)
 {

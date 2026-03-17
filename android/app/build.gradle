@@ -89,14 +89,18 @@ task prepareAssets() {
 		}
 
 		// compile translations
-		fileTree("${projRoot}/po").include("**/*.po").grep {
-			it.parentFile.name !in unsupportedLanguages
-		}.forEach { poFile ->
-			def moPath = "${assetsFolder}/locale/${poFile.parentFile.name}/LC_MESSAGES/"
-			file(moPath).mkdirs()
-			exec {
-				commandLine 'msgfmt', '-o', "${moPath}/luanti.mo", poFile
+		try {
+			fileTree("${projRoot}/po").include("**/*.po").grep {
+				it.parentFile.name !in unsupportedLanguages
+			}.forEach { poFile ->
+				def moPath = "${assetsFolder}/locale/${poFile.parentFile.name}/LC_MESSAGES/"
+				file(moPath).mkdirs()
+				exec {
+					commandLine 'msgfmt', '-o', "${moPath}/luanti.mo", poFile
+				}
 			}
+		} catch (Exception e) {
+			logger.warn("Failed to compile translations: {}", e.message)
 		}
 
 		file("${assetsFolder}/.nomedia").text = ""
