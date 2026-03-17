@@ -259,7 +259,7 @@ public:
 				if (fp.fog_end >= 0.0f)
 					fog_end_ratio = fp.fog_end;
 			}
-			f32 fog_range = m_game ? m_game->runData.fog_range : 0.0f;
+			f32 fog_range = m_game ? m_game->getFogRange() : 0.0f;
 			f32 inv_bs = 1.0f / (f32)BS;
 			f32 player_speed = lp ? (lp->getSpeed().getLength() * inv_bs) : 0.0f;
 
