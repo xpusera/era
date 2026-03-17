@@ -168,3 +168,46 @@ For skinned meshes (including glTF), `frame_blend` controls crossfade duration (
 
 `core.on_animation_end(object, cb)` (alias for `core.animator.on_animation_end`)
 - Calls `cb(object)` when the current non-looping animation is expected to end (computed from `ObjectRef:get_animation()`).
+
+## Fog API (Lua)
+
+Extended volumetric and height-based fog controls.
+
+`core.set_fog(player, params_or_nil)`
+- Sets custom fog parameters for a specific player. Pass `nil` to clear.
+- `params`:
+  - `color`: ColorSpec (default: sky fog color)
+  - `fog_start`: number (0..0.99, fraction of view distance)
+  - `fog_end`: number (0..1, fraction of view distance)
+  - `blend_time`: number (seconds, transition duration)
+  - `max_density`: number (0..1, opacity at max height)
+  - `max_density_height`: number (node-space height for max density)
+  - `zero_density_height`: number (node-space height where fog disappears)
+  - `uniform`: boolean (if true, ignores height density)
+  - `direction`: v3f (up vector for height calculation, default `{x=0,y=1,z=0}`)
+  - `turbulence`: number (0..1, noise factor)
+  - `speed_density_scale`: number (multiplier for density based on player speed)
+  - `layers`: list of table (up to 4 extra fog layers):
+    - `color`, `max_density`, `max_density_height`, `zero_density_height`, `uniform`, `direction`
+  - `color_transition`: table (dynamic color animation):
+    - `speed`: number (animation speed)
+    - Array of keyframes or `keyframes` field:
+      - `{ time=number(0..1), color=ColorSpec }`
+
+`core.set_fog_boundary(player, params_or_nil)`
+- Defines a localized fog zone.
+- `params`:
+  - `pos`: v3f (center of the zone)
+  - `radius`: number (node-space size)
+  - `shape`: string (`"sphere"`, `"box"`, `"cylinder"`)
+  - `fog`: table (FogParams structure as defined above)
+  - `sound`: table (optional ambient sound inside zone):
+    - `name`: string
+    - `gain`: number
+    - `fade_in`: number (seconds)
+
+`core.register_biome_atmosphere(biome_id, params)`
+- Registers fog and/or boundary parameters for a specific biome.
+- `params`:
+  - `fog`: table (FogParams)
+  - `boundary`: table (FogBoundaryParams)
