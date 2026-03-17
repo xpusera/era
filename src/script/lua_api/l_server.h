@@ -6,9 +6,15 @@
 
 #include "lua_api/l_base.h"
 
+struct FogParams;
+class RemotePlayer;
+
 class ModApiServer : public ModApiBase
 {
 private:
+	static RemotePlayer *read_player_or_name(lua_State *L, int idx);
+	static void read_fog_params(lua_State *L, int idx, FogParams &p);
+
 	// request_shutdown([message], [reconnect])
 	static int l_request_shutdown(lua_State *L);
 

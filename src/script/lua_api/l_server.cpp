@@ -4,6 +4,10 @@
 
 #include "lua_api/l_server.h"
 
+#include "cpp_api/s_internal.h"
+#include "lua_api/l_internal.h"
+#include <lauxlib.h>
+
 #include "common/c_content.h"
 #include "common/c_converter.h"
 #include "common/c_packer.h"
@@ -12,7 +16,6 @@
 #include "cpp_api/s_security.h"
 #include "filesys.h"
 #include "log.h"
-#include "lua_api/l_internal.h"
 #include "lua_api/l_object.h"
 #include "network/connection.h"
 #include "remoteplayer.h"
@@ -412,7 +415,7 @@ int ModApiServer::l_show_formspec(lua_State *L)
 	return 1;
 }
 
-static RemotePlayer *read_player_or_name(lua_State *L, int idx)
+RemotePlayer *ModApiServer::read_player_or_name(lua_State *L, int idx)
 {
 	if (lua_type(L, idx) == LUA_TSTRING) {
 		GET_ENV_PTR_NO_MAP_LOCK;
@@ -430,7 +433,7 @@ static RemotePlayer *read_player_or_name(lua_State *L, int idx)
 	return playersao->getPlayer();
 }
 
-static void read_fog_params(lua_State *L, int idx, FogParams &p)
+void ModApiServer::read_fog_params(lua_State *L, int idx, FogParams &p)
 {
 	p.active = true;
 
@@ -459,7 +462,7 @@ static void read_fog_params(lua_State *L, int idx, FogParams &p)
 	lua_getfield(L, idx, "layers");
 	if (lua_istable(L, -1)) {
 		p.layers.clear();
-		lua_Integer n = luaL_len(L, -1);
+		lua_Integer n = lua_objlen(L, -1);
 		for (lua_Integer i = 1; i <= n; i++) {
 			lua_rawgeti(L, -1, i);
 			if (lua_istable(L, -1)) {
@@ -490,7 +493,7 @@ static void read_fog_params(lua_State *L, int idx, FogParams &p)
 		lua_getfield(L, -1, "keyframes");
 		if (lua_istable(L, -1)) {
 			p.color_transition.keyframes.clear();
-			lua_Integer n = luaL_len(L, -1);
+			lua_Integer n = lua_objlen(L, -1);
 			for (lua_Integer i = 1; i <= n; i++) {
 				lua_rawgeti(L, -1, i);
 				if (lua_istable(L, -1)) {
