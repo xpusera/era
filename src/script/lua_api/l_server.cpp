@@ -14,6 +14,7 @@
 #include "content/mods.h" // ModSpec
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_security.h"
+#include "exceptions.h"
 #include "filesys.h"
 #include "log.h"
 #include "lua_api/l_object.h"
@@ -418,7 +419,8 @@ int ModApiServer::l_show_formspec(lua_State *L)
 RemotePlayer *ModApiServer::read_player_or_name(lua_State *L, int idx)
 {
 	if (lua_type(L, idx) == LUA_TSTRING) {
-		GET_ENV_PTR_NO_MAP_LOCK;
+		ServerEnvironment *env = (ServerEnvironment *)getEnv(L);
+		if (!env) return nullptr;
 		std::string name = readParam<std::string>(L, idx);
 		return env->getPlayer(name.c_str());
 	}
@@ -489,27 +491,39 @@ void ModApiServer::read_fog_params(lua_State *L, int idx, FogParams &p)
 
 	lua_getfield(L, idx, "color_transition");
 	if (lua_istable(L, -1)) {
-		p.color_transition.speed = getfloatfield_default(L, -1, "speed", 0.0f);
-		lua_getfield(L, -1, "keyframes");
-		if (lua_istable(L, -1)) {
-			p.color_transition.keyframes.clear();
-			lua_Integer n = lua_objlen(L, -1);
-			for (lua_Integer i = 1; i <= n; i++) {
-				lua_rawgeti(L, -1, i);
-				if (lua_istable(L, -1)) {
-					FogColorKeyframe k;
-					k.time = getfloatfield_default(L, -1, "time", 0.0f);
-					lua_getfield(L, -1, "color");
-					if (!lua_isnil(L, -1))
-						read_color(L, -1, &k.color);
-					lua_pop(L, 1);
-					p.color_transition.keyframes.emplace_back(std::move(k));
-				}
+		int ct_idx = lua_gettop(L);
+		p.color_transition.speed = getfloatfield_default(L, ct_idx, "speed", 0.0f);
+		p.color_transition.keyframes.clear();
+
+		auto read_k = [&](int k_parent_idx, int k_idx) {
+			lua_rawgeti(L, k_parent_idx, k_idx);
+			if (lua_istable(L, -1)) {
+				FogColorKeyframe k;
+				k.time = getfloatfield_default(L, -1, "time", 0.0f);
+				lua_getfield(L, -1, "color");
+				if (!lua_isnil(L, -1))
+					read_color(L, -1, &k.color);
 				lua_pop(L, 1);
+				p.color_transition.keyframes.emplace_back(std::move(k));
 			}
+			lua_pop(L, 1);
+		};
+
+		lua_getfield(L, ct_idx, "keyframes");
+		if (lua_istable(L, -1)) {
+			int kf_idx = lua_gettop(L);
+			lua_Integer n = lua_objlen(L, kf_idx);
+			for (lua_Integer i = 1; i <= n; i++)
+				read_k(kf_idx, i);
+			lua_pop(L, 1);
+		} else {
+			lua_pop(L, 1);
+			lua_Integer n = lua_objlen(L, ct_idx);
+			for (lua_Integer i = 1; i <= n; i++)
+				read_k(ct_idx, i);
 		}
-		lua_pop(L, 1);
 	}
+	lua_pop(L, 1);
 	lua_pop(L, 1);
 
 	fog_sanitize(p);
