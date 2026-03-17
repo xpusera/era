@@ -52,8 +52,17 @@ private:
 	// chat_send_player(name, text)
 	static int l_chat_send_player(lua_State *L);
 
-	// show_formspec(playername,formname,formspec)
-	static int l_show_formspec(lua_State *L);
+		// show_formspec(playername,formname,formspec)
+		static int l_show_formspec(lua_State *L);
+
+		// set_fog(player, def)
+		static int l_set_fog(lua_State *L);
+
+		// set_fog_boundary(player, def)
+		static int l_set_fog_boundary(lua_State *L);
+
+		// register_biome_atmosphere(biome_id, def)
+		static int l_register_biome_atmosphere(lua_State *L);
 
 	// sound_play(spec, parameters)
 	static int l_sound_play(lua_State *L);

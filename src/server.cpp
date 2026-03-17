@@ -26,6 +26,7 @@
 #include "serverenvironment.h"
 #include "servermap.h"
 #include "server/player_sao.h"
+#include "mapgen/mg_biome.h"
 #include "server/rollback.h"
 #include "server/serveractiveobject.h"
 #include "server/serverinventorymgr.h"
@@ -740,9 +741,10 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 
 		m_env->reportMaxLagEstimate(max_lag);
 
-		// Step environment
-		m_env->step(dtime);
-	}
+			// Step environment
+			m_env->step(dtime);
+			stepBiomeAtmosphere(dtime);
+		}
 
 	static const float map_timer_and_unload_dtime = 2.92;
 	if(m_map_timer_and_unload_interval.step(dtime, map_timer_and_unload_dtime))
@@ -1984,19 +1986,33 @@ void Server::SendSetMoon(session_t peer_id, const MoonParams &params)
 
 	Send(&pkt);
 }
-void Server::SendSetStars(session_t peer_id, const StarParams &params)
-{
+	void Server::SendSetStars(session_t peer_id, const StarParams &params)
+	{
 	NetworkPacket pkt(TOCLIENT_SET_STARS, 0, peer_id);
 
 	pkt << params.visible << params.count
 		<< params.starcolor << params.scale
 		<< params.day_opacity << params.star_seed;
 
-	Send(&pkt);
-}
+		Send(&pkt);
+	}
 
-void Server::SendCloudParams(session_t peer_id, const CloudParams &params)
-{
+	void Server::SendSetFog(session_t peer_id, const FogParams &params)
+	{
+		NetworkPacket pkt(TOCLIENT_SET_FOG, 0, peer_id);
+		fog_serialize(pkt, params);
+		Send(&pkt);
+	}
+
+	void Server::SendSetFogBoundary(session_t peer_id, const FogBoundaryParams &params)
+	{
+		NetworkPacket pkt(TOCLIENT_SET_FOG_BOUNDARY, 0, peer_id);
+		fog_boundary_serialize(pkt, params);
+		Send(&pkt);
+	}
+
+	void Server::SendCloudParams(session_t peer_id, const CloudParams &params)
+	{
 	NetworkPacket pkt(TOCLIENT_CLOUD_PARAMS, 0, peer_id);
 	pkt << params.density << params.color_bright << params.color_ambient
 		<< params.height << params.thickness << params.speed << params.color_shadow;
@@ -3646,15 +3662,141 @@ void Server::setMoon(RemotePlayer *player, const MoonParams &params)
 	SendSetMoon(player->getPeerId(), params);
 }
 
-void Server::setStars(RemotePlayer *player, const StarParams &params)
-{
-	sanity_check(player);
-	player->setStars(params);
-	SendSetStars(player->getPeerId(), params);
-}
+	void Server::setStars(RemotePlayer *player, const StarParams &params)
+	{
+		sanity_check(player);
+		player->setStars(params);
+		SendSetStars(player->getPeerId(), params);
+	}
 
-void Server::setClouds(RemotePlayer *player, const CloudParams &params)
-{
+	void Server::setFog(RemotePlayer *player, const FogParams &params)
+	{
+		sanity_check(player);
+		player->setFogParams(params);
+		SendSetFog(player->getPeerId(), params);
+	}
+
+		void Server::setFogBoundary(RemotePlayer *player, const FogBoundaryParams &params)
+		{
+			sanity_check(player);
+			player->setFogBoundaryParams(params);
+			SendSetFogBoundary(player->getPeerId(), params);
+		}
+
+			void Server::registerBiomeAtmosphere(u16 biome_id, const FogParams &fog,
+					const std::optional<FogBoundaryParams> &boundary)
+			{
+				BiomeAtmosphereDef def;
+				def.fog = fog;
+				fog_sanitize(def.fog);
+				if (boundary) {
+					def.boundary = *boundary;
+					fog_sanitize(*def.boundary);
+				}
+
+				{
+					std::lock_guard<std::mutex> lock(m_biome_atmospheres_mutex);
+					if (!def.fog.active && !def.boundary.has_value())
+						m_biome_atmospheres.erase(biome_id);
+					else
+						m_biome_atmospheres[biome_id] = std::move(def);
+					m_biome_atmospheres_revision++;
+				}
+			}
+
+			void Server::stepBiomeAtmosphere(float dtime)
+			{
+				{
+					std::lock_guard<std::mutex> lock(m_biome_atmospheres_mutex);
+					if (m_biome_atmospheres.empty() && m_player_biome_atmo_state.empty())
+						return;
+				}
+
+				m_biome_atmospheres_timer -= dtime;
+				if (m_biome_atmospheres_timer > 0.0f)
+					return;
+				m_biome_atmospheres_timer = 0.5f;
+
+				const BiomeGen *biomegen = m_emerge ? m_emerge->getBiomeGen() : nullptr;
+				if (!biomegen)
+					return;
+
+				std::unordered_set<session_t> seen_peers;
+				seen_peers.reserve(m_env->getPlayerCount());
+				std::vector<std::pair<RemotePlayer *, u16>> player_biomes;
+				player_biomes.reserve(m_env->getPlayerCount());
+
+				for (RemotePlayer *player : m_env->getPlayers()) {
+					if (!player)
+						continue;
+					session_t peer_id = player->getPeerId();
+					seen_peers.insert(peer_id);
+					PlayerSAO *sao = player->getPlayerSAO();
+					if (!sao)
+						continue;
+					v3s16 pos_node = floatToInt(sao->getBasePosition(), BS);
+					Biome *biome = (Biome *)biomegen->calcBiomeAtPoint(pos_node);
+					u16 biome_id = biome ? (u16)biome->index : (u16)0;
+					player_biomes.emplace_back(player, biome_id);
+				}
+
+				struct Action {
+					RemotePlayer *player;
+					FogParams fog;
+					FogBoundaryParams boundary;
+				};
+				std::vector<Action> actions;
+				actions.reserve(player_biomes.size());
+
+				{
+					std::lock_guard<std::mutex> lock(m_biome_atmospheres_mutex);
+					for (const auto &pb : player_biomes) {
+						RemotePlayer *player = pb.first;
+						u16 biome_id = pb.second;
+						session_t peer_id = player->getPeerId();
+
+						auto &st = m_player_biome_atmo_state[peer_id];
+						if (st.biome_id == biome_id && st.revision == m_biome_atmospheres_revision)
+							continue;
+
+						st.biome_id = biome_id;
+						st.revision = m_biome_atmospheres_revision;
+
+						auto it = m_biome_atmospheres.find(biome_id);
+						if (it == m_biome_atmospheres.end()) {
+							FogParams clear;
+							clear.active = false;
+							FogBoundaryParams clearb;
+							clearb.active = false;
+							actions.push_back({player, clear, clearb});
+							continue;
+						}
+
+						FogBoundaryParams b;
+						if (it->second.boundary)
+							b = *it->second.boundary;
+						else
+							b.active = false;
+
+						actions.push_back({player, it->second.fog, b});
+					}
+
+					for (auto it = m_player_biome_atmo_state.begin(); it != m_player_biome_atmo_state.end();) {
+						if (seen_peers.find(it->first) == seen_peers.end())
+							it = m_player_biome_atmo_state.erase(it);
+						else
+							++it;
+					}
+				}
+
+				for (const Action &a : actions) {
+					setFog(a.player, a.fog);
+					setFogBoundary(a.player, a.boundary);
+				}
+			}
+
+	void Server::setClouds(RemotePlayer *player, const CloudParams &params)
+	{
 	sanity_check(player);
 	player->setCloudParams(params);
 	SendCloudParams(player->getPeerId(), params);

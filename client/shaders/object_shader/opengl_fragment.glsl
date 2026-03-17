@@ -5,9 +5,31 @@
 #endif
 
 uniform vec3 dayLight;
-uniform lowp vec4 fogColor;
-uniform float fogDistance;
-uniform float fogShadingParameter;
+	uniform lowp vec4 fogColor;
+	uniform float fogDistance;
+	uniform float fogShadingParameter;
+
+	#define FOG_EX_MAX_LAYERS 4
+	uniform float fogExActive;
+	uniform vec4 fogExParams0; // max_density, max_density_height, zero_density_height, turbulence
+	uniform vec4 fogExParams1; // speed_density_scale, uniform, fog_start_ratio, fog_end_ratio
+	uniform vec4 fogExParams2; // player_speed_nodes, fog_range_bs, inv_bs, reserved
+	uniform vec3 fogExDirection;
+	uniform vec4 fogExLayerColor[FOG_EX_MAX_LAYERS];
+	uniform vec4 fogExLayerParams0[FOG_EX_MAX_LAYERS];
+	uniform vec4 fogExLayerDir[FOG_EX_MAX_LAYERS];
+
+	uniform float fogBoundaryActive;
+	uniform vec3 fogBoundaryPos;
+	uniform vec4 fogBoundaryParams0; // radius, shape, fade, reserved
+	uniform vec4 fogBoundaryFogColor;
+	uniform vec4 fogBoundaryFogParams0; // max_density, max_density_height, zero_density_height, turbulence
+	uniform vec4 fogBoundaryFogParams1; // speed_density_scale, uniform, fog_start_ratio, fog_end_ratio
+	uniform vec4 fogBoundaryFogParams2; // player_speed_nodes, fog_range_bs, inv_bs, reserved
+	uniform vec3 fogBoundaryFogDirection;
+	uniform vec4 fogBoundaryLayerColor[FOG_EX_MAX_LAYERS];
+	uniform vec4 fogBoundaryLayerParams0[FOG_EX_MAX_LAYERS];
+	uniform vec4 fogBoundaryLayerDir[FOG_EX_MAX_LAYERS];
 
 // The cameraOffset is the current center of the visible world.
 uniform highp vec3 cameraOffset;
@@ -444,25 +466,111 @@ void main(void)
 	}
 #endif
 
-	// Due to a bug in some (older ?) graphics stacks (possibly in the glsl compiler ?),
-	// the fog will only be rendered correctly if the last operation before the
-	// clamp() is an addition. Else, the clamp() seems to be ignored.
-	// E.g. the following won't work:
-	//      float clarity = clamp(fogShadingParameter
-	//		* (fogDistance - length(eyeVec)) / fogDistance), 0.0, 1.0);
-	// As additions usually come for free following a multiplication, the new formula
-	// should be more efficient as well.
-	// Note: clarity = (1 - fogginess)
-	float clarity = clamp(fogShadingParameter
-		- fogShadingParameter * length(eyeVec) / fogDistance, 0.0, 1.0);
-	float fogColorMax = max(max(fogColor.r, fogColor.g), fogColor.b);
-	// Prevent zero division.
-	if (fogColorMax < 0.0000001) fogColorMax = 1.0;
-	// For high clarity (light fog) we tint the fog color.
-	// For this to not make the fog color artificially dark we need to normalize using the
-	// fog color's brightest value. We then blend our base color with this to make the fog.
-	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
-	col = vec4(col.rgb, base.a);
+		float dist = length(eyeVec);
+		float fog_range_bs = fogExParams2.y;
+		float start_bs = fog_range_bs * fogExParams1.z;
+		float end_bs = fog_range_bs * fogExParams1.w;
+		float fogginess_dist = clamp((dist - start_bs) / max(end_bs - start_bs, 0.001) + 0.0, 0.0, 1.0);
+
+		vec3 pos_node = (cameraOffset + worldPosition) * fogExParams2.z;
+		vec3 fog_col = fogColor.rgb;
+		float fog_den = fogginess_dist;
+
+		if (fogExActive > 0.5) {
+			float height_scale = 1.0;
+			if (fogExParams1.y < 0.5) {
+				float h = dot(pos_node, fogExDirection);
+				float denom = max(fogExParams0.z - fogExParams0.y, 0.001);
+				float t = clamp((h - fogExParams0.y) / denom, 0.0, 1.0);
+				height_scale = 1.0 - (t * t * (3.0 - 2.0 * t));
+			}
+			float base_den = fogginess_dist * fogExParams0.x * height_scale;
+			vec3 acc_col = fogColor.rgb * base_den;
+			float acc_den = base_den;
+			for (int i = 0; i < FOG_EX_MAX_LAYERS; i++) {
+				float md = fogExLayerParams0[i].x;
+				float hs = 1.0;
+				if (fogExLayerParams0[i].w < 0.5) {
+					vec3 dir = normalize(fogExLayerDir[i].xyz);
+					float hh = dot(pos_node, dir);
+					float dden = max(fogExLayerParams0[i].z - fogExLayerParams0[i].y, 0.001);
+					float tt = clamp((hh - fogExLayerParams0[i].y) / dden, 0.0, 1.0);
+					hs = 1.0 - (tt * tt * (3.0 - 2.0 * tt));
+				}
+				float den = fogginess_dist * md * hs;
+				acc_col += fogExLayerColor[i].rgb * den;
+				acc_den += den;
+			}
+			float n = fract(sin(dot(pos_node + vec3(animationTimer * 0.2), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+			float turb = mix(1.0, 0.8 + 0.4 * n, fogExParams0.w);
+			float sp = clamp(fogExParams2.x / 10.0, 0.0, 1.0);
+			float speed_scale = 1.0 + fogExParams1.x * sp;
+			fog_den = clamp(acc_den * turb * speed_scale, 0.0, 1.0);
+			fog_col = acc_den > 0.000001 ? (acc_col / acc_den) : fogColor.rgb;
+		}
+
+		if (fogBoundaryActive > 0.5) {
+			vec3 rel = pos_node - fogBoundaryPos;
+			float radius = fogBoundaryParams0.x;
+			float shape = fogBoundaryParams0.y;
+			float fade = max(fogBoundaryParams0.z, 0.001);
+			float d = 0.0;
+			if (shape < 0.5) {
+				d = length(rel) - radius;
+			} else if (shape < 1.5) {
+				vec3 q = abs(rel) - vec3(radius);
+				vec3 qmax = max(q, vec3(0.0));
+				d = length(qmax) + min(max(q.x, max(q.y, q.z)), 0.0);
+			} else {
+				float dxy = length(rel.xz) - radius;
+				float dy = abs(rel.y) - radius;
+				d = max(dxy, dy);
+			}
+			float mixf = (d <= 0.0) ? 1.0 : clamp(1.0 - d / fade, 0.0, 1.0);
+
+			float b_start_bs = fogBoundaryFogParams2.y * fogBoundaryFogParams1.z;
+			float b_end_bs = fogBoundaryFogParams2.y * fogBoundaryFogParams1.w;
+			float b_fogginess_dist = clamp((dist - b_start_bs) / max(b_end_bs - b_start_bs, 0.001) + 0.0, 0.0, 1.0);
+			float b_height_scale = 1.0;
+			if (fogBoundaryFogParams1.y < 0.5) {
+				float h = dot(pos_node, fogBoundaryFogDirection);
+				float denom = max(fogBoundaryFogParams0.z - fogBoundaryFogParams0.y, 0.001);
+				float t = clamp((h - fogBoundaryFogParams0.y) / denom, 0.0, 1.0);
+				b_height_scale = 1.0 - (t * t * (3.0 - 2.0 * t));
+			}
+			float b_base_den = b_fogginess_dist * fogBoundaryFogParams0.x * b_height_scale;
+			vec3 b_acc_col = fogBoundaryFogColor.rgb * b_base_den;
+			float b_acc_den = b_base_den;
+			for (int i = 0; i < FOG_EX_MAX_LAYERS; i++) {
+				float md = fogBoundaryLayerParams0[i].x;
+				float hs = 1.0;
+				if (fogBoundaryLayerParams0[i].w < 0.5) {
+					vec3 dir = normalize(fogBoundaryLayerDir[i].xyz);
+					float hh = dot(pos_node, dir);
+					float dden = max(fogBoundaryLayerParams0[i].z - fogBoundaryLayerParams0[i].y, 0.001);
+					float tt = clamp((hh - fogBoundaryLayerParams0[i].y) / dden, 0.0, 1.0);
+					hs = 1.0 - (tt * tt * (3.0 - 2.0 * tt));
+				}
+				float den = b_fogginess_dist * md * hs;
+				b_acc_col += fogBoundaryLayerColor[i].rgb * den;
+				b_acc_den += den;
+			}
+			float n = fract(sin(dot(pos_node + vec3(animationTimer * 0.2), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+			float turb = mix(1.0, 0.8 + 0.4 * n, fogBoundaryFogParams0.w);
+			float sp = clamp(fogBoundaryFogParams2.x / 10.0, 0.0, 1.0);
+			float speed_scale = 1.0 + fogBoundaryFogParams1.x * sp;
+			float b_den = clamp(b_acc_den * turb * speed_scale, 0.0, 1.0);
+			vec3 b_col = b_acc_den > 0.000001 ? (b_acc_col / b_acc_den) : fogBoundaryFogColor.rgb;
+			fog_den = mix(fog_den, b_den, mixf);
+			fog_col = mix(fog_col, b_col, mixf);
+		}
+
+		float clarity = clamp(1.0 - fog_den + 0.0, 0.0, 1.0);
+		vec4 fogC = vec4(fog_col, 1.0);
+		float fogColorMax = max(max(fogC.r, fogC.g), fogC.b);
+		if (fogColorMax < 0.0000001) fogColorMax = 1.0;
+		col = mix(fogC * pow(fogC / fogColorMax, vec4(2.0 * clarity)), col, clarity);
+		col = vec4(col.rgb, base.a);
 
 	gl_FragColor = col;
 }

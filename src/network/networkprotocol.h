@@ -694,15 +694,25 @@ enum ToClientCommand : u16
 			f32 center_weight_power
 	*/
 
-	TOCLIENT_SPAWN_PARTICLE_BATCH = 0x64,
+		TOCLIENT_SPAWN_PARTICLE_BATCH = 0x64,
 	/*
 		std::string data, zstd-compressed, for each particle:
 			u32 len
 			u8[len] serialized ParticleParameters
-	*/
+		*/
 
-	TOCLIENT_NUM_MSG_TYPES = 0x65,
-};
+		TOCLIENT_SET_FOG = 0x65,
+		/*
+			FogParams (see fogparams.h)
+		*/
+
+		TOCLIENT_SET_FOG_BOUNDARY = 0x66,
+		/*
+			FogBoundaryParams (see fogparams.h)
+		*/
+
+		TOCLIENT_NUM_MSG_TYPES = 0x67,
+	};
 
 enum ToServerCommand : u16
 {

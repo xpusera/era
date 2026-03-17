@@ -400,6 +400,18 @@ void Server::handleCommand_ClientReady(NetworkPacket* pkt)
 	m_script->getAuth(playersao->getPlayer()->getName(), nullptr, nullptr, &last_login);
 	m_script->on_joinplayer(playersao, last_login);
 
+	// Ensure the client receives any server-side stored fog/boundary state.
+	{
+		RemotePlayer *player = playersao->getPlayer();
+		FogParams fog = player->getFogParams();
+		fog_sanitize(fog);
+		SendSetFog(peer_id, fog);
+
+		FogBoundaryParams boundary = player->getFogBoundaryParams();
+		fog_sanitize(boundary);
+		SendSetFogBoundary(peer_id, boundary);
+	}
+
 	// Send shutdown timer if shutdown has been scheduled
 	if (m_shutdown_state.isTimerRunning())
 		SendChatMessage(peer_id, m_shutdown_state.getShutdownTimerMessage());

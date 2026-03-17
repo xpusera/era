@@ -14,6 +14,7 @@
 #include "util/basic_macros.h"
 #include "util/metricsbackend.h"
 #include "server/clientiface.h"
+#include "fogparams.h"
 #include "threading/ordered_mutex.h"
 #include "translation.h"
 #include "sound_spec.h"
@@ -28,6 +29,7 @@
 #include <string_view>
 #include <shared_mutex>
 #include <condition_variable>
+#include <mutex>
 
 class BanManager;
 class ChatEvent;
@@ -63,6 +65,8 @@ struct ParticleSpawnerParameters;
 struct PlayerHPChangeReason;
 struct RollbackAction;
 struct SkyboxParams;
+struct FogParams;
+struct FogBoundaryParams;
 struct SoundSpec;
 struct StarParams;
 struct SunParams;
@@ -389,6 +393,11 @@ public:
 	void setSun(RemotePlayer *player, const SunParams &params);
 	void setMoon(RemotePlayer *player, const MoonParams &params);
 	void setStars(RemotePlayer *player, const StarParams &params);
+		void setFog(RemotePlayer *player, const FogParams &params);
+		void setFogBoundary(RemotePlayer *player, const FogBoundaryParams &params);
+
+		void registerBiomeAtmosphere(u16 biome_id, const FogParams &fog,
+				const std::optional<FogBoundaryParams> &boundary);
 
 	void setClouds(RemotePlayer *player, const CloudParams &params);
 
@@ -526,7 +535,8 @@ private:
 
 	typedef std::unordered_map<std::pair<v3s16, u16>, std::string, SBCHash> SerializedBlockCache;
 
-	void init();
+		void init();
+		void stepBiomeAtmosphere(float dtime);
 
 	void SendMovement(session_t peer_id);
 	void SendHP(session_t peer_id, u16 hp, bool effect);
@@ -558,6 +568,8 @@ private:
 	void SendSetSun(session_t peer_id, const SunParams &params);
 	void SendSetMoon(session_t peer_id, const MoonParams &params);
 	void SendSetStars(session_t peer_id, const StarParams &params);
+	void SendSetFog(session_t peer_id, const FogParams &params);
+	void SendSetFogBoundary(session_t peer_id, const FogBoundaryParams &params);
 	void SendCloudParams(session_t peer_id, const CloudParams &params);
 	void SendOverrideDayNightRatio(session_t peer_id, bool do_override, float ratio);
 	void SendSetLighting(session_t peer_id, const Lighting &lighting);
@@ -734,9 +746,23 @@ private:
 	/*
 	 	Client interface
 	*/
-	ClientInterface m_clients;
+		ClientInterface m_clients;
 
-	std::unordered_map<session_t, std::string> m_formspec_state_data;
+		std::unordered_map<session_t, std::string> m_formspec_state_data;
+
+			struct BiomeAtmosphereDef {
+				FogParams fog;
+				std::optional<FogBoundaryParams> boundary;
+			};
+			std::mutex m_biome_atmospheres_mutex;
+			std::unordered_map<u16, BiomeAtmosphereDef> m_biome_atmospheres;
+			u32 m_biome_atmospheres_revision = 0;
+			float m_biome_atmospheres_timer = 0.0f;
+			struct PlayerBiomeAtmosphereState {
+				u16 biome_id = 0;
+				u32 revision = 0;
+			};
+			std::unordered_map<session_t, PlayerBiomeAtmosphereState> m_player_biome_atmo_state;
 
 	/*
 		Random stuff

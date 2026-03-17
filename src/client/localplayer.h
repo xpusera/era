@@ -7,6 +7,8 @@
 #include "player.h"
 #include "constants.h"
 #include "lighting.h"
+#include "fogparams.h"
+#include "client/sound.h"
 #include <string>
 
 class Client;
@@ -161,7 +163,16 @@ public:
 		m_added_velocity += vel;
 	}
 
-	inline Lighting& getLighting() { return m_lighting; }
+	inline Lighting &getLighting() { return m_lighting; }
+
+	void setFogParams(const FogParams &params);
+	void setFogBoundaryParams(const FogBoundaryParams &params);
+	const FogParams &getFogParams() const { return m_fog_current; }
+	const FogBoundaryParams &getFogBoundaryParams() const { return m_fog_boundary; }
+	f32 getFogBoundaryInfluence() const { return m_fog_boundary_influence; }
+	const FogParams &getEffectiveFogParams() const { return m_fog_effective; }
+	const FogParams &getEffectiveFogBoundaryFogParams() const { return m_fog_boundary_fog_effective; }
+	void stepFog(f32 dtime, Environment *env);
 
 	inline PlayerSettings &getPlayerSettings() { return m_player_settings; }
 
@@ -219,4 +230,27 @@ private:
 
 	PlayerSettings m_player_settings;
 	Lighting m_lighting;
-};
+
+	FogParams m_fog_current;
+	FogParams m_fog_blend_from;
+	FogParams m_fog_target;
+	FogParams m_fog_effective;
+	video::SColorf m_fog_color_transition_state;
+	bool m_fog_color_transition_state_valid = false;
+	f32 m_fog_blend_timer = 0.0f;
+	f32 m_fog_blend_total = 0.0f;
+
+	FogBoundaryParams m_fog_boundary;
+	FogParams m_fog_boundary_fog_current;
+	FogParams m_fog_boundary_fog_blend_from;
+	FogParams m_fog_boundary_fog_target;
+	FogParams m_fog_boundary_fog_effective;
+	video::SColorf m_fog_boundary_color_transition_state;
+	bool m_fog_boundary_color_transition_state_valid = false;
+	f32 m_fog_boundary_fog_blend_timer = 0.0f;
+	f32 m_fog_boundary_fog_blend_total = 0.0f;
+	f32 m_fog_boundary_influence = 0.0f;
+	bool m_fog_boundary_inside_prev = false;
+	sound_handle_t m_fog_boundary_sound = 0;
+	f32 m_fog_boundary_sound_release_timer = 0.0f;
+	};

@@ -474,9 +474,10 @@ set(common_SRCS
 	player.cpp
 	porting.cpp
 	raycast.cpp
-	reflowscan.cpp
-	remoteplayer.cpp
-	rollback_interface.cpp
+		reflowscan.cpp
+		remoteplayer.cpp
+		fogparams.cpp
+		rollback_interface.cpp
 	server.cpp
 	serverenvironment.cpp
 	servermap.cpp

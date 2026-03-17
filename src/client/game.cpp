@@ -69,6 +69,7 @@ class GameGlobalShaderUniformSetter : public IShaderUniformSetter
 {
 	Sky *m_sky;
 	Client *m_client;
+	Game *m_game;
 
 	CachedVertexShaderSetting<float> m_animation_timer_vertex{"animationTimer"};
 	CachedPixelShaderSetting<float> m_animation_timer_pixel{"animationTimer"};
@@ -105,6 +106,27 @@ class GameGlobalShaderUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<float> m_bloom_strength_pixel{"bloomStrength"};
 	CachedPixelShaderSetting<float> m_bloom_radius_pixel{"bloomRadius"};
 	CachedPixelShaderSetting<float> m_saturation_pixel{"saturation"};
+
+	CachedPixelShaderSetting<float> m_fog_ex_active{"fogExActive"};
+	CachedPixelShaderSetting<float, 4> m_fog_ex_params0{"fogExParams0"};
+	CachedPixelShaderSetting<float, 4> m_fog_ex_params1{"fogExParams1"};
+	CachedPixelShaderSetting<float, 4> m_fog_ex_params2{"fogExParams2"};
+	CachedPixelShaderSetting<float, 3> m_fog_ex_direction{"fogExDirection"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_ex_layer_color{"fogExLayerColor[0]"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_ex_layer_params0{"fogExLayerParams0[0]"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_ex_layer_dir{"fogExLayerDir[0]"};
+
+	CachedPixelShaderSetting<float> m_fog_boundary_active{"fogBoundaryActive"};
+	CachedPixelShaderSetting<float, 3> m_fog_boundary_pos{"fogBoundaryPos"};
+	CachedPixelShaderSetting<float, 4> m_fog_boundary_params0{"fogBoundaryParams0"};
+	CachedPixelShaderSetting<float, 4> m_fog_boundary_color{"fogBoundaryFogColor"};
+	CachedPixelShaderSetting<float, 4> m_fog_boundary_fog_params0{"fogBoundaryFogParams0"};
+	CachedPixelShaderSetting<float, 4> m_fog_boundary_fog_params1{"fogBoundaryFogParams1"};
+	CachedPixelShaderSetting<float, 4> m_fog_boundary_fog_params2{"fogBoundaryFogParams2"};
+	CachedPixelShaderSetting<float, 3> m_fog_boundary_fog_direction{"fogBoundaryFogDirection"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_boundary_layer_color{"fogBoundaryLayerColor[0]"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_boundary_layer_params0{"fogBoundaryLayerParams0[0]"};
+	CachedPixelShaderSetting<float, FOG_MAX_LAYERS * 4> m_fog_boundary_layer_dir{"fogBoundaryLayerDir[0]"};
 	bool m_volumetric_light_enabled;
 	CachedPixelShaderSetting<float, 3>
 		m_sun_position_pixel{"sunPositionScreen"};
@@ -135,7 +157,8 @@ public:
 
 	GameGlobalShaderUniformSetter(Sky *sky, Game *game) :
 		m_sky(sky),
-		m_client(game->getClient())
+		m_client(game->getClient()),
+		m_game(game)
 	{
 		for (auto &name : SETTING_CALLBACKS)
 			g_settings->registerChangedCallback(name, settingsCallback, this);
@@ -178,7 +201,7 @@ public:
 
 		v3f camera_position = m_client->getCamera()->getPosition();
 		m_camera_position_pixel.set(camera_position, services);
-		m_camera_position_pixel.set(camera_position, services);
+		m_camera_position_vertex.set(camera_position, services);
 
 		m_texel_size0_vertex.set(m_texel_size0, services);
 		m_texel_size0_pixel.set(m_texel_size0, services);
@@ -215,10 +238,135 @@ public:
 			m_bloom_radius_pixel.set(&radius, services);
 		}
 
-		float saturation = lighting.saturation;
-		m_saturation_pixel.set(&saturation, services);
+			float saturation = lighting.saturation;
+			m_saturation_pixel.set(&saturation, services);
 
-		if (m_volumetric_light_enabled) {
+			const LocalPlayer *lp = m_client->getEnv().getLocalPlayer();
+			const FogParams *fp_ptr = lp ? &lp->getEffectiveFogParams() : nullptr;
+			FogParams fp;
+			if (fp_ptr)
+				fp = *fp_ptr;
+			fog_sanitize(fp);
+
+			f32 fog_active = (fp_ptr && fp.active) ? 1.0f : 0.0f;
+			m_fog_ex_active.set(&fog_active, services);
+
+			f32 fog_start_ratio = m_sky ? m_sky->getFogStart() : 0.4f;
+			f32 fog_end_ratio = 1.0f;
+			if (fog_active > 0.5f) {
+				if (fp.fog_start >= 0.0f)
+					fog_start_ratio = fp.fog_start;
+				if (fp.fog_end >= 0.0f)
+					fog_end_ratio = fp.fog_end;
+			}
+			f32 fog_range = m_game ? m_game->runData.fog_range : 0.0f;
+			f32 inv_bs = 1.0f / (f32)BS;
+			f32 player_speed = lp ? (lp->getSpeed().getLength() * inv_bs) : 0.0f;
+
+			float p0[4] = {fp.max_density, fp.max_density_height, fp.zero_density_height, fp.turbulence};
+			m_fog_ex_params0.set(p0, services);
+			float p1[4] = {fp.speed_density_scale, fp.uniform ? 1.0f : 0.0f, fog_start_ratio, fog_end_ratio};
+			m_fog_ex_params1.set(p1, services);
+			float p2[4] = {player_speed, fog_range, inv_bs, 0.0f};
+			m_fog_ex_params2.set(p2, services);
+			m_fog_ex_direction.set(fp.direction, services);
+
+			std::array<float, FOG_MAX_LAYERS * 4> layer_color{};
+			std::array<float, FOG_MAX_LAYERS * 4> layer_params0{};
+			std::array<float, FOG_MAX_LAYERS * 4> layer_dir{};
+			for (size_t i = 0; i < FOG_MAX_LAYERS; i++) {
+				FogLayer l;
+				if (i < fp.layers.size())
+					l = fp.layers[i];
+				else {
+					l.color = fp.color;
+					l.max_density = 0.0f;
+					l.max_density_height = fp.max_density_height;
+					l.zero_density_height = fp.zero_density_height;
+					l.uniform = fp.uniform;
+					l.direction = fp.direction;
+				}
+				video::SColorf cf(l.color);
+				layer_color[i * 4 + 0] = cf.r;
+				layer_color[i * 4 + 1] = cf.g;
+				layer_color[i * 4 + 2] = cf.b;
+				layer_color[i * 4 + 3] = cf.a;
+				layer_params0[i * 4 + 0] = l.max_density;
+				layer_params0[i * 4 + 1] = l.max_density_height;
+				layer_params0[i * 4 + 2] = l.zero_density_height;
+				layer_params0[i * 4 + 3] = l.uniform ? 1.0f : 0.0f;
+				layer_dir[i * 4 + 0] = l.direction.X;
+				layer_dir[i * 4 + 1] = l.direction.Y;
+				layer_dir[i * 4 + 2] = l.direction.Z;
+				layer_dir[i * 4 + 3] = 0.0f;
+			}
+			m_fog_ex_layer_color.set(layer_color.data(), services);
+			m_fog_ex_layer_params0.set(layer_params0.data(), services);
+			m_fog_ex_layer_dir.set(layer_dir.data(), services);
+
+			FogBoundaryParams fb;
+			FogParams fb_fog;
+			f32 boundary_active = 0.0f;
+			if (lp) {
+				fb = lp->getFogBoundaryParams();
+				fb_fog = lp->getEffectiveFogBoundaryFogParams();
+				fog_sanitize(fb);
+				fog_sanitize(fb_fog);
+				boundary_active = (fb.active && fb_fog.active) ? 1.0f : 0.0f;
+			}
+			m_fog_boundary_active.set(&boundary_active, services);
+			m_fog_boundary_pos.set(fb.pos, services);
+			f32 boundary_fade = std::max(1.0f, fb.radius * 0.25f);
+			float bp0[4] = {fb.radius, (f32)fb.shape, boundary_fade, 0.0f};
+			m_fog_boundary_params0.set(bp0, services);
+			video::SColorf bcol(fb_fog.color);
+			float bcol4[4] = {bcol.r, bcol.g, bcol.b, bcol.a};
+			m_fog_boundary_color.set(bcol4, services);
+
+			f32 bstart = (fb_fog.fog_start >= 0.0f) ? fb_fog.fog_start : fog_start_ratio;
+			f32 bend = (fb_fog.fog_end >= 0.0f) ? fb_fog.fog_end : fog_end_ratio;
+			float bfp0[4] = {fb_fog.max_density, fb_fog.max_density_height, fb_fog.zero_density_height, fb_fog.turbulence};
+			m_fog_boundary_fog_params0.set(bfp0, services);
+			float bfp1[4] = {fb_fog.speed_density_scale, fb_fog.uniform ? 1.0f : 0.0f, bstart, bend};
+			m_fog_boundary_fog_params1.set(bfp1, services);
+			float bfp2[4] = {player_speed, fog_range, inv_bs, 0.0f};
+			m_fog_boundary_fog_params2.set(bfp2, services);
+			m_fog_boundary_fog_direction.set(fb_fog.direction, services);
+
+			std::array<float, FOG_MAX_LAYERS * 4> blayer_color{};
+			std::array<float, FOG_MAX_LAYERS * 4> blayer_params0{};
+			std::array<float, FOG_MAX_LAYERS * 4> blayer_dir{};
+			for (size_t i = 0; i < FOG_MAX_LAYERS; i++) {
+				FogLayer l;
+				if (i < fb_fog.layers.size())
+					l = fb_fog.layers[i];
+				else {
+					l.color = fb_fog.color;
+					l.max_density = 0.0f;
+					l.max_density_height = fb_fog.max_density_height;
+					l.zero_density_height = fb_fog.zero_density_height;
+					l.uniform = fb_fog.uniform;
+					l.direction = fb_fog.direction;
+				}
+				video::SColorf cf(l.color);
+				blayer_color[i * 4 + 0] = cf.r;
+				blayer_color[i * 4 + 1] = cf.g;
+				blayer_color[i * 4 + 2] = cf.b;
+				blayer_color[i * 4 + 3] = cf.a;
+				blayer_params0[i * 4 + 0] = l.max_density;
+				blayer_params0[i * 4 + 1] = l.max_density_height;
+				blayer_params0[i * 4 + 2] = l.zero_density_height;
+				blayer_params0[i * 4 + 3] = l.uniform ? 1.0f : 0.0f;
+				blayer_dir[i * 4 + 0] = l.direction.X;
+				blayer_dir[i * 4 + 1] = l.direction.Y;
+				blayer_dir[i * 4 + 2] = l.direction.Z;
+				blayer_dir[i * 4 + 3] = 0.0f;
+			}
+			m_fog_boundary_layer_color.set(blayer_color.data(), services);
+			m_fog_boundary_layer_params0.set(blayer_params0.data(), services);
+			m_fog_boundary_layer_dir.set(blayer_dir.data(), services);
+
+			if (m_volumetric_light_enabled) {
 			// Map directional light to screen space
 			auto camera_node = m_client->getCamera()->getCameraNode();
 			core::matrix4 transform = camera_node->getProjectionMatrix();
@@ -2169,10 +2317,12 @@ const ClientEventHandler Game::clientEventHandler[CLIENTEVENT_MAX] = {
 	{&Game::handleClientEvent_HudRemove},
 	{&Game::handleClientEvent_HudChange},
 	{&Game::handleClientEvent_SetSky},
-	{&Game::handleClientEvent_SetSun},
-	{&Game::handleClientEvent_SetMoon},
-	{&Game::handleClientEvent_SetStars},
-	{&Game::handleClientEvent_OverrideDayNightRatio},
+		{&Game::handleClientEvent_SetSun},
+		{&Game::handleClientEvent_SetMoon},
+		{&Game::handleClientEvent_SetStars},
+		{&Game::handleClientEvent_SetFog},
+		{&Game::handleClientEvent_SetFogBoundary},
+		{&Game::handleClientEvent_OverrideDayNightRatio},
 	{&Game::handleClientEvent_CloudParams},
 	{&Game::handleClientEvent_UpdateCamera},
 };
@@ -2466,6 +2616,20 @@ void Game::handleClientEvent_SetStars(ClientEvent *event, CameraOrientation *cam
 	sky->setStarDayOpacity(event->star_params->day_opacity);
 	sky->setStarSeed(event->star_params->star_seed);
 	delete event->star_params;
+}
+
+void Game::handleClientEvent_SetFog(ClientEvent *event, CameraOrientation *cam)
+{
+	LocalPlayer *player = client->getEnv().getLocalPlayer();
+	player->setFogParams(*event->set_fog);
+	delete event->set_fog;
+}
+
+void Game::handleClientEvent_SetFogBoundary(ClientEvent *event, CameraOrientation *cam)
+{
+	LocalPlayer *player = client->getEnv().getLocalPlayer();
+	player->setFogBoundaryParams(*event->set_fog_boundary);
+	delete event->set_fog_boundary;
 }
 
 void Game::handleClientEvent_OverrideDayNightRatio(ClientEvent *event,
@@ -3617,23 +3781,38 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 
 	const video::SColor fog_color = this->sky->getFogColor();
 	const video::SColor sky_color = this->sky->getSkyColor();
+	const LocalPlayer *player = this->client->getEnv().getLocalPlayer();
+
+	video::SColor fog_color_effective = fog_color;
+	f32 fog_start_ratio = this->sky->getFogStart();
+	f32 fog_end_ratio = 1.0f;
+	if (player) {
+		const FogParams &fp = player->getEffectiveFogParams();
+		if (fp.active) {
+			fog_color_effective = fp.color;
+			if (fp.fog_start >= 0.0f)
+				fog_start_ratio = fp.fog_start;
+			if (fp.fog_end >= 0.0f)
+				fog_end_ratio = fp.fog_end;
+		}
+	}
 
 	/*
 		Fog
 	*/
 	if (this->fogEnabled()) {
 		this->driver->setFog(
-				fog_color,
+				fog_color_effective,
 				video::EFT_FOG_LINEAR,
-				this->runData.fog_range * this->sky->getFogStart(),
-				this->runData.fog_range * 1.0f,
+				this->runData.fog_range * fog_start_ratio,
+				this->runData.fog_range * fog_end_ratio,
 				0.f, // unused
 				false, // pixel fog
 				true // range fog
 		);
 	} else {
 		this->driver->setFog(
-				fog_color,
+				fog_color_effective,
 				video::EFT_FOG_LINEAR,
 				FOG_RANGE_ALL,
 				FOG_RANGE_ALL + 100 * BS,
@@ -3649,7 +3828,7 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	TimeTaker tt_draw("Draw scene", nullptr, PRECISION_MICRO);
 	this->driver->beginScene(true, true, sky_color);
 
-	const LocalPlayer *player = this->client->getEnv().getLocalPlayer();
+	assert(player);
 	bool draw_wield_tool = (this->m_game_ui->m_flags.show_hud &&
 			(player->hud_flags & HUD_FLAG_WIELDITEM_VISIBLE) &&
 			(this->camera->getCameraMode() == CAMERA_MODE_FIRST));

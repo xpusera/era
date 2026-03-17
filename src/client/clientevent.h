@@ -14,6 +14,8 @@ struct SkyboxParams;
 struct SunParams;
 struct MoonParams;
 struct StarParams;
+struct FogParams;
+struct FogBoundaryParams;
 
 enum ClientEventType : u8
 {
@@ -34,6 +36,8 @@ enum ClientEventType : u8
 	CE_SET_SUN,
 	CE_SET_MOON,
 	CE_SET_STARS,
+	CE_SET_FOG,
+	CE_SET_FOG_BOUNDARY,
 	CE_OVERRIDE_DAY_NIGHT_RATIO,
 	CE_CLOUD_PARAMS,
 	CE_UPDATE_CAMERA,
@@ -126,6 +130,8 @@ struct ClientEvent
 		} cloud_params;
 		SunParams *sun_params;
 		MoonParams *moon_params;
-		StarParams *star_params;
+			StarParams *star_params;
+			FogParams *set_fog;
+			FogBoundaryParams *set_fog_boundary;
+		};
 	};
-};

@@ -33,6 +33,7 @@
 #include "tileanimation.h"
 #include "gettext.h"
 #include "skyparams.h"
+#include "fogparams.h"
 #include "particles.h"
 #include <memory>
 #include <sstream>
@@ -1871,4 +1872,26 @@ void Client::handleCommand_SetLighting(NetworkPacket *pkt)
 				>> lighting.bloom_strength_factor
 				>> lighting.bloom_radius;
 	} while (0);
+}
+
+void Client::handleCommand_SetFog(NetworkPacket *pkt)
+{
+	FogParams params;
+	fog_deserialize(*pkt, params);
+
+	ClientEvent *e = new ClientEvent();
+	e->type = CE_SET_FOG;
+	e->set_fog = new FogParams(std::move(params));
+	m_client_event_queue.push(e);
+}
+
+void Client::handleCommand_SetFogBoundary(NetworkPacket *pkt)
+{
+	FogBoundaryParams params;
+	fog_boundary_deserialize(*pkt, params);
+
+	ClientEvent *e = new ClientEvent();
+	e->type = CE_SET_FOG_BOUNDARY;
+	e->set_fog_boundary = new FogBoundaryParams(std::move(params));
+	m_client_event_queue.push(e);
 }

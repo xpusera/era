@@ -3,6 +3,8 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "localplayer.h"
+#include "sound_spec.h"
+#include <algorithm>
 #include <cmath>
 #include "mtevent.h"
 #include "collision.h"
@@ -68,6 +70,367 @@ LocalPlayer::LocalPlayer(Client *client, const std::string &name):
 LocalPlayer::~LocalPlayer()
 {
 	m_player_settings.deregisterSettingsCallback();
+}
+
+static f32 clamp01(f32 v)
+{
+	return std::clamp(v, 0.0f, 1.0f);
+}
+
+static f32 lerp_f32(f32 a, f32 b, f32 t)
+{
+	return a + (b - a) * t;
+}
+
+static v3f lerp_v3f(const v3f &a, const v3f &b, f32 t)
+{
+	return a + (b - a) * t;
+}
+
+static v3f lerp_dir(const v3f &a, const v3f &b, f32 t, const v3f &def)
+{
+	v3f out = lerp_v3f(a, b, t);
+	if (out.getLengthSQ() < 1e-12f)
+		return def;
+	out.normalize();
+	return out;
+}
+
+static video::SColorf lerp_colorf(const video::SColorf &a, const video::SColorf &b, f32 t)
+{
+	return video::SColorf(
+		lerp_f32(a.r, b.r, t),
+		lerp_f32(a.g, b.g, t),
+		lerp_f32(a.b, b.b, t),
+		lerp_f32(a.a, b.a, t)
+	);
+}
+
+static video::SColor color_from_colorf(const video::SColorf &c)
+{
+	auto to_u8 = [](f32 v) -> u8 {
+		v = std::clamp(v, 0.0f, 1.0f);
+		int iv = (int)std::lround(v * 255.0f);
+		iv = std::clamp(iv, 0, 255);
+		return (u8)iv;
+	};
+	return video::SColor(to_u8(c.a), to_u8(c.r), to_u8(c.g), to_u8(c.b));
+}
+
+static FogLayer layer_default_from_base(const FogParams &base)
+{
+	FogLayer l;
+	l.color = base.color;
+	l.max_density = 0.0f;
+	l.max_density_height = base.max_density_height;
+	l.zero_density_height = base.zero_density_height;
+	l.uniform = base.uniform;
+	l.direction = base.direction;
+	return l;
+}
+
+static FogParams lerp_fog_params(const FogParams &a_in, const FogParams &b_in, f32 t)
+{
+	FogParams a = a_in;
+	FogParams b = b_in;
+	fog_sanitize(a);
+	fog_sanitize(b);
+
+	FogParams out;
+	out.active = (t < 1.0f) ? a.active : b.active;
+	out.color = video::SColor(
+		(u8)lerp_f32(a.color.getAlpha(), b.color.getAlpha(), t),
+		(u8)lerp_f32(a.color.getRed(), b.color.getRed(), t),
+		(u8)lerp_f32(a.color.getGreen(), b.color.getGreen(), t),
+		(u8)lerp_f32(a.color.getBlue(), b.color.getBlue(), t)
+	);
+	out.fog_start = lerp_f32(a.fog_start, b.fog_start, t);
+	out.fog_end = lerp_f32(a.fog_end, b.fog_end, t);
+	out.blend_time = b.blend_time;
+	out.max_density = lerp_f32(a.max_density, b.max_density, t);
+	out.max_density_height = lerp_f32(a.max_density_height, b.max_density_height, t);
+	out.zero_density_height = lerp_f32(a.zero_density_height, b.zero_density_height, t);
+	out.uniform = (t < 1.0f) ? a.uniform : b.uniform;
+	out.direction = lerp_dir(a.direction, b.direction, t, v3f(0.0f, 1.0f, 0.0f));
+	out.turbulence = lerp_f32(a.turbulence, b.turbulence, t);
+	out.speed_density_scale = lerp_f32(a.speed_density_scale, b.speed_density_scale, t);
+
+	out.layers.clear();
+	out.layers.reserve(FOG_MAX_LAYERS);
+	for (size_t i = 0; i < FOG_MAX_LAYERS; i++) {
+		FogLayer la = (i < a.layers.size()) ? a.layers[i] : layer_default_from_base(a);
+		FogLayer lb = (i < b.layers.size()) ? b.layers[i] : layer_default_from_base(b);
+		FogLayer lo;
+		lo.color = video::SColor(
+			(u8)lerp_f32(la.color.getAlpha(), lb.color.getAlpha(), t),
+			(u8)lerp_f32(la.color.getRed(), lb.color.getRed(), t),
+			(u8)lerp_f32(la.color.getGreen(), lb.color.getGreen(), t),
+			(u8)lerp_f32(la.color.getBlue(), lb.color.getBlue(), t)
+		);
+		lo.max_density = lerp_f32(la.max_density, lb.max_density, t);
+		lo.max_density_height = lerp_f32(la.max_density_height, lb.max_density_height, t);
+		lo.zero_density_height = lerp_f32(la.zero_density_height, lb.zero_density_height, t);
+		lo.uniform = (t < 1.0f) ? la.uniform : lb.uniform;
+		lo.direction = lerp_dir(la.direction, lb.direction, t, v3f(0.0f, 1.0f, 0.0f));
+		out.layers.emplace_back(std::move(lo));
+	}
+
+	out.color_transition = (t < 1.0f) ? a.color_transition : b.color_transition;
+	fog_sanitize(out);
+	return out;
+}
+
+static video::SColorf eval_keyframes(const std::vector<FogColorKeyframe> &keys, f32 tod)
+{
+	if (keys.size() < 2)
+		return video::SColorf(0.0f, 0.0f, 0.0f, 0.0f);
+	tod = tod - std::floor(tod);
+
+	const FogColorKeyframe *k0 = nullptr;
+	const FogColorKeyframe *k1 = nullptr;
+
+	for (size_t i = 0; i + 1 < keys.size(); i++) {
+		if (tod >= keys[i].time && tod <= keys[i + 1].time) {
+			k0 = &keys[i];
+			k1 = &keys[i + 1];
+			break;
+		}
+	}
+
+	if (!k0) {
+		k0 = &keys.back();
+		k1 = &keys.front();
+		f32 t0 = k0->time;
+		f32 t1 = k1->time + 1.0f;
+		f32 wrapped = tod + (tod < t0 ? 1.0f : 0.0f);
+		f32 tt = (t1 - t0) > 1e-6f ? (wrapped - t0) / (t1 - t0) : 0.0f;
+		return lerp_colorf(video::SColorf(k0->color), video::SColorf(k1->color), clamp01(tt));
+	}
+
+	f32 denom = (k1->time - k0->time);
+	f32 tt = denom > 1e-6f ? (tod - k0->time) / denom : 0.0f;
+	return lerp_colorf(video::SColorf(k0->color), video::SColorf(k1->color), clamp01(tt));
+}
+
+void LocalPlayer::setFogParams(const FogParams &params_in)
+{
+	FogParams params = params_in;
+	fog_sanitize(params);
+
+	if (params.blend_time > 0.0f) {
+		m_fog_blend_from = m_fog_current;
+		m_fog_target = params;
+		m_fog_blend_timer = 0.0f;
+		m_fog_blend_total = params.blend_time;
+	} else {
+		m_fog_current = params;
+		m_fog_target = params;
+		m_fog_blend_timer = 0.0f;
+		m_fog_blend_total = 0.0f;
+	}
+	if (!params.color_transition.active())
+		m_fog_color_transition_state_valid = false;
+}
+
+void LocalPlayer::setFogBoundaryParams(const FogBoundaryParams &params_in)
+{
+	FogBoundaryParams params = params_in;
+	fog_sanitize(params);
+
+	bool was_active = m_fog_boundary.active;
+	m_fog_boundary = params;
+
+	FogParams fog = params.fog;
+	if (fog.blend_time > 0.0f) {
+		m_fog_boundary_fog_blend_from = m_fog_boundary_fog_current;
+		m_fog_boundary_fog_target = fog;
+		m_fog_boundary_fog_blend_timer = 0.0f;
+		m_fog_boundary_fog_blend_total = fog.blend_time;
+	} else {
+		m_fog_boundary_fog_current = fog;
+		m_fog_boundary_fog_target = fog;
+		m_fog_boundary_fog_blend_timer = 0.0f;
+		m_fog_boundary_fog_blend_total = 0.0f;
+	}
+	if (!fog.color_transition.active())
+		m_fog_boundary_color_transition_state_valid = false;
+
+	if (was_active && !params.active) {
+		m_fog_boundary_inside_prev = false;
+		m_fog_boundary_influence = 0.0f;
+	}
+}
+
+static f32 sdf_sphere(const v3f &p, f32 r)
+{
+	return p.getLength() - r;
+}
+
+static f32 sdf_box(const v3f &p, f32 r)
+{
+	v3f q(std::abs(p.X) - r, std::abs(p.Y) - r, std::abs(p.Z) - r);
+	v3f qmax(std::max(q.X, 0.0f), std::max(q.Y, 0.0f), std::max(q.Z, 0.0f));
+	f32 outside = qmax.getLength();
+	f32 inside = std::min(std::max(q.X, std::max(q.Y, q.Z)), 0.0f);
+	return outside + inside;
+}
+
+static f32 sdf_cylinder(const v3f &p, f32 r)
+{
+	f32 dxy = std::sqrt(p.X * p.X + p.Z * p.Z) - r;
+	f32 dy = std::abs(p.Y) - r;
+	return std::max(dxy, dy);
+}
+
+static f32 sdf_boundary(const FogBoundaryParams &b, const v3f &p_node)
+{
+	v3f rel = p_node - b.pos;
+	switch (b.shape) {
+	case FogBoundaryShape::Box:
+		return sdf_box(rel, b.radius);
+	case FogBoundaryShape::Cylinder:
+		return sdf_cylinder(rel, b.radius);
+	case FogBoundaryShape::Sphere:
+	default:
+		return sdf_sphere(rel, b.radius);
+	}
+}
+
+static v3f boundary_outward_normal(const FogBoundaryParams &b, const v3f &p_node)
+{
+	v3f rel = p_node - b.pos;
+	v3f n(0.0f, 1.0f, 0.0f);
+	switch (b.shape) {
+	case FogBoundaryShape::Sphere:
+		if (rel.getLengthSQ() > 1e-6f) {
+			n = rel;
+			n.normalize();
+		}
+		break;
+	case FogBoundaryShape::Box: {
+		f32 dx = b.radius - std::abs(rel.X);
+		f32 dy = b.radius - std::abs(rel.Y);
+		f32 dz = b.radius - std::abs(rel.Z);
+		if (dx <= dy && dx <= dz)
+			n = v3f(rel.X >= 0.0f ? 1.0f : -1.0f, 0.0f, 0.0f);
+		else if (dy <= dx && dy <= dz)
+			n = v3f(0.0f, rel.Y >= 0.0f ? 1.0f : -1.0f, 0.0f);
+		else
+			n = v3f(0.0f, 0.0f, rel.Z >= 0.0f ? 1.0f : -1.0f);
+		break;
+	}
+	case FogBoundaryShape::Cylinder: {
+		f32 side = b.radius - std::sqrt(rel.X * rel.X + rel.Z * rel.Z);
+		f32 cap = b.radius - std::abs(rel.Y);
+		if (side <= cap) {
+			n = v3f(rel.X, 0.0f, rel.Z);
+			if (n.getLengthSQ() > 1e-6f)
+				n.normalize();
+			else
+				n = v3f(1.0f, 0.0f, 0.0f);
+		} else {
+			n = v3f(0.0f, rel.Y >= 0.0f ? 1.0f : -1.0f, 0.0f);
+		}
+		break;
+	}
+	}
+	return n;
+}
+
+void LocalPlayer::stepFog(f32 dtime, Environment *env)
+{
+	if (m_fog_blend_total > 0.0f) {
+		m_fog_blend_timer += dtime;
+		f32 t = clamp01(m_fog_blend_timer / m_fog_blend_total);
+		m_fog_current = lerp_fog_params(m_fog_blend_from, m_fog_target, t);
+		if (t >= 1.0f)
+			m_fog_blend_total = 0.0f;
+	}
+
+	if (m_fog_boundary_fog_blend_total > 0.0f) {
+		m_fog_boundary_fog_blend_timer += dtime;
+		f32 t = clamp01(m_fog_boundary_fog_blend_timer / m_fog_boundary_fog_blend_total);
+		m_fog_boundary_fog_current = lerp_fog_params(m_fog_boundary_fog_blend_from, m_fog_boundary_fog_target, t);
+		if (t >= 1.0f)
+			m_fog_boundary_fog_blend_total = 0.0f;
+	}
+
+	m_fog_effective = m_fog_current;
+	m_fog_boundary_fog_effective = m_fog_boundary_fog_current;
+
+	const f32 tod = env ? env->getTimeOfDayF() : 0.0f;
+	if (m_fog_effective.color_transition.active()) {
+		video::SColorf target = eval_keyframes(m_fog_effective.color_transition.keyframes, tod);
+		if (!m_fog_color_transition_state_valid) {
+			m_fog_color_transition_state = target;
+			m_fog_color_transition_state_valid = true;
+		} else {
+			f32 a = 1.0f - std::exp(-m_fog_effective.color_transition.speed * dtime);
+			m_fog_color_transition_state = lerp_colorf(m_fog_color_transition_state, target, clamp01(a));
+		}
+		m_fog_effective.color = color_from_colorf(m_fog_color_transition_state);
+	}
+
+	if (m_fog_boundary_fog_effective.color_transition.active()) {
+		video::SColorf target = eval_keyframes(m_fog_boundary_fog_effective.color_transition.keyframes, tod);
+		if (!m_fog_boundary_color_transition_state_valid) {
+			m_fog_boundary_color_transition_state = target;
+			m_fog_boundary_color_transition_state_valid = true;
+		} else {
+			f32 a = 1.0f - std::exp(-m_fog_boundary_fog_effective.color_transition.speed * dtime);
+			m_fog_boundary_color_transition_state = lerp_colorf(m_fog_boundary_color_transition_state, target, clamp01(a));
+		}
+		m_fog_boundary_fog_effective.color = color_from_colorf(m_fog_boundary_color_transition_state);
+	}
+
+	bool inside = false;
+	if (m_fog_boundary.active && m_fog_boundary.radius > 0.0f) {
+		v3f p_node = getPosition() * (1.0f / BS);
+		f32 d = sdf_boundary(m_fog_boundary, p_node);
+		inside = (d <= 0.0f);
+		f32 fade = std::max(1.0f, m_fog_boundary.radius * 0.25f);
+		m_fog_boundary_influence = inside ? 1.0f : (1.0f - clamp01(d / fade));
+	} else {
+		m_fog_boundary_influence = 0.0f;
+	}
+
+#if USE_SOUND
+	ISoundManager *sound = m_client ? m_client->getSoundManager() : nullptr;
+	if (m_fog_boundary_sound_release_timer > 0.0f) {
+		m_fog_boundary_sound_release_timer -= dtime;
+		if (m_fog_boundary_sound_release_timer <= 0.0f && m_fog_boundary_sound != 0 && sound) {
+			sound->freeId(m_fog_boundary_sound);
+			m_fog_boundary_sound = 0;
+		}
+	}
+
+	if (sound) {
+		bool wants_sound = m_fog_boundary.active && m_fog_boundary.has_sound && !m_fog_boundary.sound_name.empty();
+		if (wants_sound && inside && !m_fog_boundary_inside_prev) {
+			if (m_fog_boundary_sound == 0)
+				m_fog_boundary_sound = sound->allocateId(1);
+			SoundSpec spec(m_fog_boundary.sound_name, m_fog_boundary.sound_gain);
+			spec.loop = true;
+			spec.fade = m_fog_boundary.sound_fade_in;
+			sound->playSound(m_fog_boundary_sound, spec);
+			m_fog_boundary_sound_release_timer = 0.0f;
+		} else if ((!wants_sound || !inside) && m_fog_boundary_inside_prev) {
+			if (m_fog_boundary_sound != 0) {
+				f32 fade = m_fog_boundary.sound_fade_in;
+				if (fade > 0.0f) {
+					sound->fadeSound(m_fog_boundary_sound, m_fog_boundary.sound_gain / fade, 0.0f);
+					m_fog_boundary_sound_release_timer = fade + 0.25f;
+				} else {
+					sound->stopSound(m_fog_boundary_sound);
+					sound->freeId(m_fog_boundary_sound);
+					m_fog_boundary_sound = 0;
+				}
+			}
+		}
+	}
+#endif
+
+	m_fog_boundary_inside_prev = inside;
 }
 
 static aabb3f getNodeBoundingBox(const std::vector<aabb3f> &nodeboxes)
@@ -250,6 +613,36 @@ void LocalPlayer::move(f32 dtime, Environment *env,
 
 	m_speed += m_added_velocity;
 	m_added_velocity = v3f(0.0f);
+
+	if (m_fog_boundary.active && m_fog_boundary.radius > 0.0f) {
+		v3f p_node = position * (1.0f / BS);
+		f32 d = sdf_boundary(m_fog_boundary, p_node);
+		if (d < 0.0f) {
+			f32 margin = std::clamp(m_fog_boundary.radius * 0.1f, 0.5f, 3.0f);
+			if (d > -margin) {
+				f32 t = clamp01((d + margin) / margin);
+				f32 strength_nodes = 6.0f * t * t;
+				v3f outward = boundary_outward_normal(m_fog_boundary, p_node);
+				v3f inward = -outward;
+				m_speed += inward * (strength_nodes * BS) * dtime;
+			}
+		}
+	}
+
+	if (m_fog_boundary.active && m_fog_boundary.radius > 0.0f) {
+		v3f p_node = position * (1.0f / BS);
+		f32 d = sdf_boundary(m_fog_boundary, p_node);
+		if (d < 0.0f) {
+			f32 margin = std::clamp(m_fog_boundary.radius * 0.1f, 0.5f, 3.0f);
+			if (d > -margin) {
+				f32 t = clamp01((d + margin) / margin);
+				f32 strength_nodes = 6.0f * t * t;
+				v3f outward = boundary_outward_normal(m_fog_boundary, p_node);
+				v3f inward = -outward;
+				m_speed += inward * (strength_nodes * BS) * dtime;
+			}
+		}
+	}
 
 	/*
 		Collision detection

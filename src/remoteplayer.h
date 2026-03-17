@@ -8,6 +8,7 @@
 #include "constants.h" // PEER_ID_INEXISTENT
 #include "player.h"
 #include "skyparams.h"
+#include "fogparams.h"
 #include "lighting.h"
 #include "network/networkprotocol.h" // session_t
 
@@ -88,6 +89,12 @@ public:
 
 	const StarParams &getStarParams() const { return m_star_params; }
 
+	void setFogParams(const FogParams &fog_params) { m_fog_params = fog_params; }
+	const FogParams &getFogParams() const { return m_fog_params; }
+
+	void setFogBoundaryParams(const FogBoundaryParams &params) { m_fog_boundary_params = params; }
+	const FogBoundaryParams &getFogBoundaryParams() const { return m_fog_boundary_params; }
+
 	void setCloudParams(const CloudParams &cloud_params)
 	{
 		m_cloud_params = cloud_params;
@@ -155,6 +162,9 @@ private:
 	SunParams m_sun_params;
 	MoonParams m_moon_params;
 	StarParams m_star_params;
+
+	FogParams m_fog_params;
+	FogBoundaryParams m_fog_boundary_params;
 
 	Lighting m_lighting;
 
