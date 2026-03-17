@@ -33,7 +33,7 @@ int ModApiServer::l_request_shutdown(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	const char *msg = lua_tolstring(L, 1, NULL);
-	bool reconnect = readParam<bool>(L, 2);
+	bool reconnect = readParam<bool>(L, 2, false);
 	float seconds_before_shutdown = lua_tonumber(L, 3);
 	getServer(L)->requestShutdown(msg ? msg : "", reconnect, seconds_before_shutdown);
 	return 0;
@@ -523,7 +523,6 @@ void ModApiServer::read_fog_params(lua_State *L, int idx, FogParams &p)
 				read_k(ct_idx, i);
 		}
 	}
-	lua_pop(L, 1);
 	lua_pop(L, 1);
 
 	fog_sanitize(p);
