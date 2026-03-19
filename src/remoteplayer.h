@@ -10,6 +10,7 @@
 #include "skyparams.h"
 #include "fogparams.h"
 #include "lighting.h"
+#include "network/camera_control_packet.h"
 #include "network/networkprotocol.h" // session_t
 
 class PlayerSAO;
@@ -124,7 +125,9 @@ public:
 
 	const Lighting& getLighting() const { return m_lighting; }
 
-	void setDirty(bool dirty) { m_dirty = true; }
+		void setDirty(bool dirty) { m_dirty = dirty; }
+
+		CameraControlState camera_control;
 
 	u16 protocol_version = 0;
 	u16 formspec_version = 0;

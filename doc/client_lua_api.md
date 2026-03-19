@@ -38,15 +38,7 @@ Startup
 Mods are loaded during client startup from the mod load paths by running
 the `init.lua` scripts in a shared environment.
 
-In order to load client-side mods, the following conditions need to be satisfied:
-
-1) `$path_user/minetest.conf` contains the setting `enable_client_modding = true`
-
-2) The client-side mod located in `$path_user/clientmods/<modname>` is added to
-    `$path_user/clientmods/mods.conf` as `load_mod_<modname> = true`.
-
-Note: Depending on the remote server's settings, client-side mods might not
-be loaded or have limited functionality. See setting `csm_restriction_flags` for reference.
+Client-side modding (CSM/SSCSM) is disabled in this Android-only fork.
 
 Paths
 -----
@@ -61,22 +53,6 @@ Paths
         * Linux: `$HOME/.minetest`
         * Windows: `C:/users/<user>/AppData/minetest` (maybe)
 
-Mod load path
--------------
-Generic:
-
-* `$path_share/clientmods/`
-* `$path_user/clientmods/` (User-installed mods)
-
-In a run-in-place version (e.g. the distributed windows version):
-
-* `minetest/clientmods/` (User-installed mods)
-
-On an installed version on Linux:
-
-* `/usr/share/minetest/clientmods/`
-* `$HOME/.minetest/clientmods/` (User-installed mods)
-
 Modpack support
 ----------------
 
@@ -87,15 +63,6 @@ The file is a key-value store of modpack details.
 * `name`: The modpack name.
 * `description`: Description of mod to be shown in the Mods tab of the main
                  menu.
-
-Mod directory structure
-------------------------
-
-    clientmods
-    ├── modname
-    │   ├── mod.conf
-    │   ├── init.lua
-    └── another
 
 ### modname
 
@@ -468,15 +435,13 @@ Call these functions only at load time!
 * `core.get_node_max_level(pos)`
     * get max available level for leveled node
 
-### Player
-* `core.send_chat_message(message)`
-    * Act as if `message` was typed by the player into the terminal.
-* `core.run_server_chatcommand(cmd, param)`
-    * Alias for `core.send_chat_message("/" .. cmd .. " " .. param)`
-* `core.clear_out_chat_queue()`
-    * Clears the out chat queue
-* `core.localplayer`
-    * Reference to the LocalPlayer object. See [`LocalPlayer`](#localplayer) class reference for methods.
+	### Player
+	* `core.send_chat_message(message)`
+	    * Act as if `message` was typed by the player into the terminal.
+	* `core.run_server_chatcommand(cmd, param)`
+	    * Alias for `core.send_chat_message("/" .. cmd .. " " .. param)`
+	* `core.clear_out_chat_queue()`
+	    * Clears the out chat queue
 
 ### Privileges
 * `core.get_privilege_list()`

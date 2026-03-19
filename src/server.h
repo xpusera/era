@@ -15,6 +15,7 @@
 #include "util/metricsbackend.h"
 #include "server/clientiface.h"
 #include "fogparams.h"
+#include "network/camera_control_packet.h"
 #include "threading/ordered_mutex.h"
 #include "translation.h"
 #include "sound_spec.h"
@@ -431,6 +432,8 @@ public:
 	void SendPlayerSpeed(session_t peer_id, const v3f &added_vel);
 	void SendPlayerFov(session_t peer_id);
 	void SendCamera(session_t peer_id, Player *player);
+	void SendCameraControl(session_t peer_id, const CameraControlState &st,
+		u8 flags, u16 field_mask);
 
 	void SendMinimapModes(session_t peer_id,
 			std::vector<MinimapMode> &modes,

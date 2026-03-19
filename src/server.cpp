@@ -2052,12 +2052,11 @@ void Server::SendSetLighting(session_t peer_id, const Lighting &lighting)
 	Send(&pkt);
 }
 
+
 void Server::SendCamera(session_t peer_id, Player *player)
 {
 	NetworkPacket pkt(TOCLIENT_CAMERA, 1, peer_id);
-
 	pkt << static_cast<u8>(player->allowed_camera_mode);
-
 	Send(&pkt);
 }
 
@@ -2072,6 +2071,14 @@ void Server::SendTimeOfDay(session_t peer_id, u16 time, f32 time_speed)
 	else {
 		Send(&pkt);
 	}
+}
+
+void Server::SendCameraControl(session_t peer_id, const CameraControlState &st,
+	u8 flags, u16 field_mask)
+{
+	NetworkPacket pkt(TOCLIENT_CAMERA_CONTROL, 0, peer_id);
+	camera_control_serialize(pkt, st, flags, field_mask);
+	Send(&pkt);
 }
 
 void Server::SendPlayerBreath(PlayerSAO *sao)

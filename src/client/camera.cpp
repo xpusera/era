@@ -411,8 +411,18 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 	v3f abs_cam_up = m_headnode->getAbsoluteTransformation()
 			.rotateAndScaleVect(rel_cam_up);
 
+	// Apply server-driven camera overrides (computed client-side)
+	{
+		v3f base_rot_deg(pitch, -yaw, cameratilt * player->hurt_tilt_strength);
+		m_cam_control.step(frametime, m_client, player, m_camera_position, base_rot_deg);
+		m_camera_position = m_cam_control.getCameraPosBS();
+		m_camera_direction = m_cam_control.getCameraDir();
+		abs_cam_up = m_cam_control.getCameraUp();
+	}
+
 	// Reposition the camera for third person view
-	if (m_camera_mode > CAMERA_MODE_FIRST)
+	bool third_person = (m_camera_mode > CAMERA_MODE_FIRST) || m_cam_control.forceThirdPerson();
+	if (third_person && !m_cam_control.detached())
 	{
 		v3f my_cp = m_camera_position;
 
@@ -423,7 +433,9 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 
 		// Calculate new position
 		bool abort = false;
-		for (int i = BS; i <= BS * 2.75; i++) {
+		f32 max_dist = m_cam_control.forceThirdPerson() ? m_cam_control.getThirdPersonDistanceBS() : (BS * 2.75f);
+		int max_i = std::max((int)BS, (int)std::round(max_dist));
+		for (int i = BS; i <= max_i; i++) {
 			my_cp.X = m_camera_position.X + m_camera_direction.X * -i;
 			my_cp.Z = m_camera_position.Z + m_camera_direction.Z * -i;
 			if (i > 12)
@@ -462,11 +474,12 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 		+ 100 * m_camera_direction);
 
 	/*
-	 * Apply server-sent FOV, instantaneous or smooth transition.
-	 * If not, check for zoom and set to zoom FOV.
-	 * Otherwise, default to m_cache_fov.
+	 * Apply camera-control FOV override (server-driven, computed client-side).
+	 * Otherwise fall back to existing server-sent FOV / zoom / client FOV logic.
 	 */
-	if (m_fov_transition_active) {
+	if (m_cam_control.hasFovOverride()) {
+		m_curr_fov_degrees = m_cam_control.getFovOverrideDeg();
+	} else if (m_fov_transition_active) {
 		// Smooth FOV transition
 		// Dynamically calculate FOV delta based on frametimes
 		f32 delta = (frametime / m_transition_time) * m_fov_diff;
@@ -635,6 +648,8 @@ void Camera::drawWieldedTool(core::matrix4* translation)
 
 void Camera::toggleCameraMode()
 {
+	if (m_cam_control.perspectiveLocked())
+		return;
 	if (m_camera_mode == CAMERA_MODE_FIRST)
 		m_camera_mode = CAMERA_MODE_THIRD;
 	else if (m_camera_mode == CAMERA_MODE_THIRD)

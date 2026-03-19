@@ -18,8 +18,6 @@
 #include "lua_api/l_util.h"
 #include "lua_api/l_item.h"
 #include "lua_api/l_nodemeta.h"
-#include "lua_api/l_localplayer.h"
-#include "lua_api/l_camera.h"
 #include "lua_api/l_settings.h"
 #include "lua_api/l_client_sound.h"
 
@@ -57,8 +55,6 @@ void ClientScripting::InitializeModApi(lua_State *L, int top)
 	StorageRef::Register(L);
 	LuaMinimap::Register(L);
 	NodeMetaRef::RegisterClient(L);
-	LuaLocalPlayer::Register(L);
-	LuaCamera::Register(L);
 	ModChannelRef::Register(L);
 	LuaSettings::Register(L);
 	ClientSoundHandle::Register(L);
@@ -76,12 +72,12 @@ void ClientScripting::InitializeModApi(lua_State *L, int top)
 
 void ClientScripting::on_client_ready(LocalPlayer *localplayer)
 {
-	LuaLocalPlayer::create(getStack(), localplayer);
+	(void)localplayer;
 }
 
 void ClientScripting::on_camera_ready(Camera *camera)
 {
-	LuaCamera::create(getStack(), camera);
+	(void)camera;
 }
 
 void ClientScripting::on_minimap_ready(Minimap *minimap)

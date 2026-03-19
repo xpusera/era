@@ -46,7 +46,6 @@ class ParticleManager;
 class RenderingEngine;
 class SingleMediaDownloader;
 class ClientScripting;
-class SSCSMController;
 struct ChatMessage;
 struct ClientDynamicInfo;
 struct ClientEvent;
@@ -168,9 +167,10 @@ public:
 	void handleCommand_ChatMessage(NetworkPacket *pkt);
 	void handleCommand_ActiveObjectRemoveAdd(NetworkPacket* pkt);
 	void handleCommand_ActiveObjectMessages(NetworkPacket* pkt);
-	void handleCommand_Movement(NetworkPacket* pkt);
-	void handleCommand_Fov(NetworkPacket *pkt);
-	void handleCommand_HP(NetworkPacket* pkt);
+		void handleCommand_Movement(NetworkPacket* pkt);
+		void handleCommand_Fov(NetworkPacket *pkt);
+		void handleCommand_CameraControl(NetworkPacket *pkt);
+		void handleCommand_HP(NetworkPacket* pkt);
 	void handleCommand_Breath(NetworkPacket* pkt);
 	void handleCommand_MovePlayer(NetworkPacket* pkt);
 	void handleCommand_MovePlayerRel(NetworkPacket* pkt);
@@ -582,10 +582,7 @@ private:
 	std::vector<ModSpec> m_mods;
 	std::unique_ptr<ModVFS> m_mod_vfs;
 
-	// SSCSM
-	std::unique_ptr<SSCSMController> m_sscsm_controller;
-
-	bool m_shutdown = false;
+		bool m_shutdown = false;
 
 	// CSM restrictions byteflag
 	u64 m_csm_restriction_flags = CSMRestrictionFlags::CSM_RF_NONE;

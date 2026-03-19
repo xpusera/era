@@ -8,6 +8,7 @@
 #include "inventory.h" // ItemStack
 #include "util/basic_macros.h"
 #include "util/numeric.h"
+#include "camera_control.h"
 #include <plane3d.h>
 #include <array>
 #include <vector>
@@ -167,11 +168,14 @@ public:
 		m_camera_mode = mode;
 	}
 
-	//read the current camera mode
-	inline CameraMode getCameraMode() const
-	{
-		return m_camera_mode;
-	}
+		//read the current camera mode
+		inline CameraMode getCameraMode() const
+		{
+			return m_cam_control.forceThirdPerson() ? CAMERA_MODE_THIRD : m_camera_mode;
+		}
+
+		ClientCameraControl &getCameraControl() { return m_cam_control; }
+		const ClientCameraControl &getCameraControl() const { return m_cam_control; }
 
 	Nametag *addNametag(const Nametag &params);
 
@@ -258,6 +262,8 @@ private:
 	std::vector<Nametag*> m_nametags;
 	bool m_show_nametag_backgrounds;
 
-	// Last known light color of the player
-	video::SColor m_player_light_color;
-};
+		// Last known light color of the player
+		video::SColor m_player_light_color;
+
+		ClientCameraControl m_cam_control;
+	};

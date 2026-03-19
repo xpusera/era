@@ -35,6 +35,7 @@
 #include "skyparams.h"
 #include "fogparams.h"
 #include "particles.h"
+#include "network/camera_control_packet.h"
 #include <memory>
 #include <sstream>
 
@@ -522,6 +523,16 @@ void Client::handleCommand_Fov(NetworkPacket *pkt)
 	assert(player);
 	player->setFov({ fov, is_multiplier, transition_time });
 	m_camera->notifyFovChange();
+}
+
+void Client::handleCommand_CameraControl(NetworkPacket *pkt)
+{
+	CameraControlState st;
+	u8 flags = 0;
+	u16 field_mask = 0;
+	camera_control_deserialize(*pkt, st, &flags, &field_mask);
+	if (m_camera)
+		m_camera->getCameraControl().applyServerUpdate(st, flags, field_mask);
 }
 
 void Client::handleCommand_HP(NetworkPacket *pkt)

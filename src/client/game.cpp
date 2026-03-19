@@ -1647,8 +1647,10 @@ void Game::processKeyInput()
 	} else if (wasKeyDown(KeyType::TOGGLE_UPDATE_CAMERA)) {
 		toggleUpdateCamera();
 	} else if (wasKeyPressed(KeyType::CAMERA_MODE)) {
-		camera->toggleCameraMode();
-		updateCameraMode();
+		if (!camera->getCameraControl().perspectiveLocked()) {
+			camera->toggleCameraMode();
+			updateCameraMode();
+		}
 	} else if (wasKeyPressed(KeyType::TOGGLE_DEBUG)) {
 		toggleDebug();
 	} else if (wasKeyPressed(KeyType::TOGGLE_PROFILER)) {
@@ -2137,11 +2139,14 @@ bool Game::isTouchShootlineUsed() const
 
 void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 {
+	f32 dyaw = 0.0f;
+	f32 dpitch = 0.0f;
+
 	if (g_touchcontrols) {
 		// User setting is already applied by TouchControls.
 		f32 sens_scale = getSensitivityScaleFactor();
-		cam->camera_yaw   += g_touchcontrols->getYawChange()   * sens_scale;
-		cam->camera_pitch += g_touchcontrols->getPitchChange() * sens_scale;
+		dyaw = g_touchcontrols->getYawChange() * sens_scale;
+		dpitch = g_touchcontrols->getPitchChange() * sens_scale;
 	} else {
 		v2s32 center(driver->getScreenSize().Width / 2, driver->getScreenSize().Height / 2);
 		v2s32 dist = input->getMousePos() - center;
@@ -2151,8 +2156,8 @@ void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 		}
 
 		f32 sens_scale = getSensitivityScaleFactor();
-		cam->camera_yaw   -= dist.X * m_cache_mouse_sensitivity * sens_scale;
-		cam->camera_pitch += dist.Y * m_cache_mouse_sensitivity * sens_scale;
+		dyaw = -dist.X * m_cache_mouse_sensitivity * sens_scale;
+		dpitch = dist.Y * m_cache_mouse_sensitivity * sens_scale;
 
 		if (dist.X != 0 || dist.Y != 0)
 			input->setMousePos(center.X, center.Y);
@@ -2161,11 +2166,18 @@ void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 	if (m_cache_enable_joysticks) {
 		f32 sens_scale = getSensitivityScaleFactor();
 		f32 c = m_cache_joystick_frustum_sensitivity * dtime * sens_scale;
-		cam->camera_yaw -= input->joystick.getAxisWithoutDead(JA_FRUSTUM_HORIZONTAL) * c;
-		cam->camera_pitch += input->joystick.getAxisWithoutDead(JA_FRUSTUM_VERTICAL) * c;
+		dyaw += -input->joystick.getAxisWithoutDead(JA_FRUSTUM_HORIZONTAL) * c;
+		dpitch += input->joystick.getAxisWithoutDead(JA_FRUSTUM_VERTICAL) * c;
 	}
 
-	cam->camera_pitch = rangelim(cam->camera_pitch, -90, 90);
+	auto &camctl = camera->getCameraControl();
+	if (camctl.consumeLookInput()) {
+		camctl.onLookInput(dyaw, dpitch);
+	} else {
+		cam->camera_yaw += dyaw;
+		cam->camera_pitch += dpitch;
+		cam->camera_pitch = rangelim(cam->camera_pitch, -90, 90);
+	}
 }
 
 
@@ -2224,6 +2236,21 @@ void Game::updatePlayerControl(const CameraOrientation &cam)
 	 */
 	if (g_touchcontrols && m_touch_simulate_aux1) {
 		control.aux1 = control.aux1 ^ true;
+	}
+
+	auto &camctl = camera->getCameraControl();
+	camctl.onMoveInput(control.getMovement(), control.jump, control.sneak, control.aux1);
+
+	if (camctl.lockInput() || camctl.spectatorActive()) {
+		control.direction_keys = 0;
+		control.movement_speed = 0.0f;
+		control.movement_direction = 0.0f;
+		control.jump = false;
+		control.aux1 = false;
+		control.sneak = false;
+		control.zoom = false;
+		control.dig = false;
+		control.place = false;
 	}
 
 	client->setPlayerControl(control);
@@ -3861,6 +3888,12 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 		this->driver->draw2DRectangle(color,
 					core::rect<s32>(0, 0, screensize.X, screensize.Y),
 					NULL);
+	}
+
+	if (auto fade = this->camera->getCameraControl().getFadeOverlayColor()) {
+		this->driver->draw2DRectangle(*fade,
+				core::rect<s32>(0, 0, screensize.X, screensize.Y),
+				NULL);
 	}
 
 	this->driver->endScene();

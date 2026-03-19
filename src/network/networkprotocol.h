@@ -706,12 +706,35 @@ enum ToClientCommand : u16
 			FogParams (see fogparams.h)
 		*/
 
-		TOCLIENT_SET_FOG_BOUNDARY = 0x66,
-		/*
-			FogBoundaryParams (see fogparams.h)
-		*/
+			TOCLIENT_SET_FOG_BOUNDARY = 0x66,
+			/*
+				FogBoundaryParams (see fogparams.h)
+			*/
 
-		TOCLIENT_NUM_MSG_TYPES = 0x67,
+			TOCLIENT_CAMERA_CONTROL = 0x67,
+			/*
+				u8 flags
+					bit 0: reset
+					bit 1: lock_perspective
+					bit 2: lock_input
+					bit 3: detached
+					bit 4: orbit
+					bit 5: spectator
+				u16 field_mask
+					bit 0: pos
+					bit 1: rot
+					bit 2: fov
+					bit 3: tilt
+					bit 4: offset
+					bit 5: third_person
+					bit 6: orbit_params
+					bit 7: spectator_params
+					bit 8: shake
+					bit 9: fade
+				payload is in the same order as bits, each block is a compact binary blob
+			*/
+
+			TOCLIENT_NUM_MSG_TYPES = 0x68,
 	};
 
 enum ToServerCommand : u16
