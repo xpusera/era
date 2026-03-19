@@ -169,10 +169,7 @@ public:
 	}
 
 		//read the current camera mode
-		inline CameraMode getCameraMode() const
-		{
-			return m_cam_control.forceThirdPerson() ? CAMERA_MODE_THIRD : m_camera_mode;
-		}
+		CameraMode getCameraMode() const;
 
 		ClientCameraControl &getCameraControl() { return m_cam_control; }
 		const ClientCameraControl &getCameraControl() const { return m_cam_control; }

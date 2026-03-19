@@ -646,6 +646,11 @@ void Camera::drawWieldedTool(core::matrix4* translation)
 	m_wieldmgr->drawAll();
 }
 
+CameraMode Camera::getCameraMode() const
+{
+	return m_cam_control.forceThirdPerson() ? CAMERA_MODE_THIRD : m_camera_mode;
+}
+
 void Camera::toggleCameraMode()
 {
 	if (m_cam_control.perspectiveLocked())

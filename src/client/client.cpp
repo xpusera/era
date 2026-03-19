@@ -52,6 +52,10 @@
 // Client modding VFS
 #include "client/mod_vfs.h"
 
+// SSCSM
+#include "script/sscsm/sscsm_events.h"
+#include "script/sscsm/sscsm_controller.h"
+
 // Network
 #include "network/clientopcodes.h"
 #include "network/connection.h"

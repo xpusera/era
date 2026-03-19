@@ -38,6 +38,7 @@ class LuaError;
 class MapDatabase;
 class MeshUpdateManager;
 class Minimap;
+class SSCSMController;
 class ModChannelMgr;
 class MtEventManager;
 class NetworkPacket;
@@ -592,4 +593,6 @@ private:
 
 	// The number of blocks the client will combine for mesh generation.
 	MeshGrid m_mesh_grid;
+
+	std::unique_ptr<SSCSMController> m_sscsm_controller;
 };
