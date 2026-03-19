@@ -5,6 +5,7 @@
 
 #include "lua_api/l_internal.h"
 #include "lua_api/l_object.h"
+#include "common/c_converter.h"
 
 #include "remoteplayer.h"
 #include "server.h"
@@ -22,7 +23,7 @@ static constexpr u8 CAMFLAG_DETACHED = 1 << 3;
 static constexpr u8 CAMFLAG_ORBIT = 1 << 4;
 static constexpr u8 CAMFLAG_SPECTATOR = 1 << 5;
 
-static CameraEaseType read_ease_type(lua_State *L, int index)
+CameraEaseType ModApiCameraControl::read_ease_type(lua_State *L, int index)
 {
 	if (lua_isnil(L, index))
 		return CameraEaseType::Linear;
@@ -41,7 +42,7 @@ static CameraEaseType read_ease_type(lua_State *L, int index)
 	return CameraEaseType::Linear;
 }
 
-static CameraEaseSpec read_ease_spec(lua_State *L, int opts_index)
+CameraEaseSpec ModApiCameraControl::read_ease_spec(lua_State *L, int opts_index)
 {
 	CameraEaseSpec e;
 	if (opts_index <= 0 || lua_isnil(L, opts_index) || !lua_istable(L, opts_index))
@@ -62,7 +63,7 @@ static CameraEaseSpec read_ease_spec(lua_State *L, int opts_index)
 	return e;
 }
 
-static bool read_bool_field(lua_State *L, int table_index, const char *name, bool def)
+bool ModApiCameraControl::read_bool_field(lua_State *L, int table_index, const char *name, bool def)
 {
 	if (table_index <= 0 || lua_isnil(L, table_index) || !lua_istable(L, table_index))
 		return def;
@@ -72,7 +73,7 @@ static bool read_bool_field(lua_State *L, int table_index, const char *name, boo
 	return v;
 }
 
-static f32 read_float_field(lua_State *L, int table_index, const char *name, f32 def)
+f32 ModApiCameraControl::read_float_field(lua_State *L, int table_index, const char *name, f32 def)
 {
 	if (table_index <= 0 || lua_isnil(L, table_index) || !lua_istable(L, table_index))
 		return def;
@@ -82,7 +83,7 @@ static f32 read_float_field(lua_State *L, int table_index, const char *name, f32
 	return v;
 }
 
-static v3f read_v3f_field(lua_State *L, int table_index, const char *name, const v3f &def)
+v3f ModApiCameraControl::read_v3f_field(lua_State *L, int table_index, const char *name, const v3f &def)
 {
 	if (table_index <= 0 || lua_isnil(L, table_index) || !lua_istable(L, table_index))
 		return def;
@@ -92,7 +93,7 @@ static v3f read_v3f_field(lua_State *L, int table_index, const char *name, const
 	return v;
 }
 
-static u32 read_color_argb(lua_State *L, int index)
+u32 ModApiCameraControl::read_color_argb(lua_State *L, int index)
 {
 	if (lua_isnumber(L, index))
 		return (u32)lua_tointeger(L, index);
@@ -114,7 +115,7 @@ static u32 read_color_argb(lua_State *L, int index)
 	return (a << 24) | (r << 16) | (g << 8) | b;
 }
 
-static PlayerSAO *check_player_sao(lua_State *L, int index)
+PlayerSAO *ModApiCameraControl::check_player_sao(lua_State *L, int index)
 {
 	luaL_checktype(L, index, LUA_TUSERDATA);
 	ObjectRef *ref = (ObjectRef *)luaL_checkudata(L, index, "ObjectRef");
@@ -127,7 +128,7 @@ static PlayerSAO *check_player_sao(lua_State *L, int index)
 	return psao;
 }
 
-static u8 build_flags(const CameraControlState &st, bool reset)
+u8 ModApiCameraControl::build_flags(const CameraControlState &st, bool reset)
 {
 	u8 flags = 0;
 	if (reset) flags |= CAMFLAG_RESET;
@@ -139,7 +140,7 @@ static u8 build_flags(const CameraControlState &st, bool reset)
 	return flags;
 }
 
-static void send_state(lua_State *L, PlayerSAO *psao, bool reset, u16 field_mask)
+void ModApiCameraControl::send_state(lua_State *L, PlayerSAO *psao, bool reset, u16 field_mask)
 {
 	Server *srv = getServer(L);
 	RemotePlayer *rp = psao->getPlayer();
@@ -150,7 +151,7 @@ static void send_state(lua_State *L, PlayerSAO *psao, bool reset, u16 field_mask
 }
 
 // core.camera.set_pos(player, pos, opts)
-static int l_set_pos(lua_State *L)
+int ModApiCameraControl::l_set_pos(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -168,7 +169,7 @@ static int l_set_pos(lua_State *L)
 }
 
 // core.camera.set_rot(player, rot, opts)
-static int l_set_rot(lua_State *L)
+int ModApiCameraControl::l_set_rot(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -184,7 +185,7 @@ static int l_set_rot(lua_State *L)
 }
 
 // core.camera.set_fov(player, fov, opts)
-static int l_set_fov(lua_State *L)
+int ModApiCameraControl::l_set_fov(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -200,7 +201,7 @@ static int l_set_fov(lua_State *L)
 }
 
 // core.camera.set_tilt(player, tilt, opts)
-static int l_set_tilt(lua_State *L)
+int ModApiCameraControl::l_set_tilt(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -217,7 +218,7 @@ static int l_set_tilt(lua_State *L)
 }
 
 // core.camera.set_offset(player, pos_offset, rot_offset, opts)
-static int l_set_offset(lua_State *L)
+int ModApiCameraControl::l_set_offset(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -235,7 +236,7 @@ static int l_set_offset(lua_State *L)
 }
 
 // core.camera.set_third_person(player, distance, opts)
-static int l_set_third_person(lua_State *L)
+int ModApiCameraControl::l_set_third_person(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -251,7 +252,7 @@ static int l_set_third_person(lua_State *L)
 }
 
 // core.camera.detach(player, opts)
-static int l_detach(lua_State *L)
+int ModApiCameraControl::l_detach(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -265,7 +266,7 @@ static int l_detach(lua_State *L)
 }
 
 // core.camera.attach(player, opts)
-static int l_attach(lua_State *L)
+int ModApiCameraControl::l_attach(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -286,7 +287,7 @@ static int l_attach(lua_State *L)
 }
 
 // core.camera.set_orbit(player, opts)
-static int l_set_orbit(lua_State *L)
+int ModApiCameraControl::l_set_orbit(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -330,7 +331,7 @@ static int l_set_orbit(lua_State *L)
 }
 
 // core.camera.set_spectator(player, opts)
-static int l_set_spectator(lua_State *L)
+int ModApiCameraControl::l_set_spectator(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -353,7 +354,7 @@ static int l_set_spectator(lua_State *L)
 }
 
 // core.camera.shake(player, opts)
-static int l_shake(lua_State *L)
+int ModApiCameraControl::l_shake(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -385,7 +386,7 @@ static int l_shake(lua_State *L)
 }
 
 // core.camera.fade(player, opts)
-static int l_fade(lua_State *L)
+int ModApiCameraControl::l_fade(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -421,7 +422,7 @@ static int l_fade(lua_State *L)
 }
 
 // core.camera.lock_perspective(player, bool)
-static int l_lock_perspective(lua_State *L)
+int ModApiCameraControl::l_lock_perspective(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -433,7 +434,7 @@ static int l_lock_perspective(lua_State *L)
 }
 
 // core.camera.reset(player, opts)
-static int l_reset(lua_State *L)
+int ModApiCameraControl::l_reset(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -456,7 +457,7 @@ static int l_reset(lua_State *L)
 }
 
 // core.camera.get_pos(player)
-static int l_get_pos(lua_State *L)
+int ModApiCameraControl::l_get_pos(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -471,7 +472,7 @@ static int l_get_pos(lua_State *L)
 }
 
 // core.camera.get_rot(player)
-static int l_get_rot(lua_State *L)
+int ModApiCameraControl::l_get_rot(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -486,7 +487,7 @@ static int l_get_rot(lua_State *L)
 }
 
 // core.camera.get_fov(player)
-static int l_get_fov(lua_State *L)
+int ModApiCameraControl::l_get_fov(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -499,7 +500,7 @@ static int l_get_fov(lua_State *L)
 }
 
 // core.camera.is_detached(player)
-static int l_is_detached(lua_State *L)
+int ModApiCameraControl::l_is_detached(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 	PlayerSAO *psao = check_player_sao(L, 1);
@@ -510,24 +511,24 @@ static int l_is_detached(lua_State *L)
 }
 
 static const luaL_Reg camera_funcs[] = {
-	{"set_pos", l_set_pos},
-	{"set_rot", l_set_rot},
-	{"set_fov", l_set_fov},
-	{"set_tilt", l_set_tilt},
-	{"set_offset", l_set_offset},
-	{"set_third_person", l_set_third_person},
-	{"detach", l_detach},
-	{"attach", l_attach},
-	{"set_orbit", l_set_orbit},
-	{"set_spectator", l_set_spectator},
-	{"shake", l_shake},
-	{"fade", l_fade},
-	{"lock_perspective", l_lock_perspective},
-	{"reset", l_reset},
-	{"get_pos", l_get_pos},
-	{"get_rot", l_get_rot},
-	{"get_fov", l_get_fov},
-	{"is_detached", l_is_detached},
+	{"set_pos", ModApiCameraControl::l_set_pos},
+	{"set_rot", ModApiCameraControl::l_set_rot},
+	{"set_fov", ModApiCameraControl::l_set_fov},
+	{"set_tilt", ModApiCameraControl::l_set_tilt},
+	{"set_offset", ModApiCameraControl::l_set_offset},
+	{"set_third_person", ModApiCameraControl::l_set_third_person},
+	{"detach", ModApiCameraControl::l_detach},
+	{"attach", ModApiCameraControl::l_attach},
+	{"set_orbit", ModApiCameraControl::l_set_orbit},
+	{"set_spectator", ModApiCameraControl::l_set_spectator},
+	{"shake", ModApiCameraControl::l_shake},
+	{"fade", ModApiCameraControl::l_fade},
+	{"lock_perspective", ModApiCameraControl::l_lock_perspective},
+	{"reset", ModApiCameraControl::l_reset},
+	{"get_pos", ModApiCameraControl::l_get_pos},
+	{"get_rot", ModApiCameraControl::l_get_rot},
+	{"get_fov", ModApiCameraControl::l_get_fov},
+	{"is_detached", ModApiCameraControl::l_is_detached},
 	{nullptr, nullptr}
 };
 
@@ -541,6 +542,9 @@ void ModApiCameraControl::Initialize(lua_State *L, int top)
 	lua_pop(L, 1);
 
 	lua_newtable(L);
-	luaL_setfuncs(L, camera_funcs, 0);
+	for (const auto *f = camera_funcs; f->name; f++) {
+		lua_pushcfunction(L, f->func);
+		lua_setfield(L, -2, f->name);
+	}
 	lua_setfield(L, top, "camera");
 }
