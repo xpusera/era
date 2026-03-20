@@ -235,7 +235,42 @@ void PlayerSAO::step(float dtime, bool send_recommended)
 		setPos(m_last_good_position);
 	}
 
-	//dstream<<"PlayerSAO::step: dtime: "<<dtime<<std::endl;
+	// Apply Minecraft-like physics (drag and friction)
+	if (!m_attachment_parent_id && !m_is_singleplayer) {
+		const NodeDefManager *nodemgr = m_env->getGameDef()->ndef();
+		v3s16 standing_p = floatToInt(getBasePosition() - v3f(0, 0.1f, 0), BS);
+		bool is_valid_standing;
+		MapNode n_standing = m_env->getMap().getNode(standing_p, &is_valid_standing);
+		const ContentFeatures &f = is_valid_standing ? nodemgr->get(n_standing) : nodemgr->get(CONTENT_IGNORE);
+
+		float slipperiness = 0.6f;
+		if (is_valid_standing && f.walkable) {
+			int slippery = itemgroup_get(f.groups, "slippery");
+			if (slippery >= 3)
+				slipperiness = 0.98f;
+			else if (slippery == 2)
+				slipperiness = 0.8f;
+			else if (slippery == 1)
+				slipperiness = 0.98f;
+		}
+
+		v3f speed = m_player->getSpeed();
+		// In Luanti, we don't easily have 'touching_ground' on the server for PlayerSAO
+		// because movement is client-driven. However, we can approximate or just apply air drag.
+		// For consistency, we apply a base drag.
+		float friction = 0.98f;
+
+		float friction_dt = std::pow(friction, dtime / 0.05f);
+		speed.X *= friction_dt;
+		speed.Z *= friction_dt;
+		speed.Y *= friction_dt;
+
+		if (std::abs(speed.X) < 0.001f * BS) speed.X = 0;
+		if (std::abs(speed.Z) < 0.001f * BS) speed.Z = 0;
+		if (std::abs(speed.Y) < 0.001f * BS) speed.Y = 0;
+
+		m_player->setSpeed(speed);
+	}
 
 	// Set lag pool maximums based on estimated lag
 	const float LAG_POOL_MIN = 5.0f;

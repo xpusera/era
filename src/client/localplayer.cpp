@@ -61,8 +61,11 @@ void PlayerSettings::settingsChangedCallback(const std::string &name, void *data
 
 LocalPlayer::LocalPlayer(Client *client, const std::string &name):
 	Player(name, client->idef()),
+	m_standing_node(v3s16(0, 0, 0)),
 	m_client(client)
 {
+	m_position = v3f(0, 0, 0);
+	m_speed = v3f(0, 0, 0);
 	m_player_settings.readGlobalSettings();
 	m_player_settings.registerSettingsCallback();
 }
@@ -574,8 +577,7 @@ void LocalPlayer::move(f32 dtime, Environment *env,
 		std::vector<CollisionInfo> *collision_info)
 {
 	// Node at feet position, update each ClientEnvironment::step()
-	if (!collision_info || collision_info->empty())
-		m_standing_node = floatToInt(m_position, BS);
+	m_standing_node = floatToInt(m_position - v3f(0, 0.1f, 0), BS);
 
 	// Temporary option for old move code
 	if (!physics_override.new_move) {
@@ -616,9 +618,12 @@ void LocalPlayer::move(f32 dtime, Environment *env,
 
 	if (!free_move && !is_climbing && !in_liquid && !in_liquid_stable) {
 		const NodeDefManager *nodemgr = m_client->ndef();
-		const ContentFeatures &f = nodemgr->get(map->getNode(m_standing_node));
+		bool is_valid_standing;
+		MapNode n_standing = map->getNode(m_standing_node, &is_valid_standing);
+		const ContentFeatures &f = is_valid_standing ? nodemgr->get(n_standing) : nodemgr->get(CONTENT_IGNORE);
+
 		float slipperiness = 0.6f;
-		if (f.walkable) {
+		if (is_valid_standing && f.walkable) {
 			int slippery = itemgroup_get(f.groups, "slippery");
 			if (slippery >= 3)
 				slipperiness = 0.98f; // Ice
@@ -638,7 +643,7 @@ void LocalPlayer::move(f32 dtime, Environment *env,
 		float friction_dt = std::pow(friction, dtime / 0.05f);
 		m_speed.X *= friction_dt;
 		m_speed.Z *= friction_dt;
-		if (!touching_ground)
+		if (!touching_ground && !in_liquid && !is_climbing)
 			m_speed.Y *= std::pow(0.98f, dtime / 0.05f);
 
 		if (std::abs(m_speed.X) < 0.001f * BS) m_speed.X = 0;

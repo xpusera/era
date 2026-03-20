@@ -28,16 +28,17 @@ android {
 			keyAlias 'androiddebugkey'
 			keyPassword 'android'
 		}
-		if (props.getProperty('keystore') != null) {
-			release {
+		release {
+			if (props.getProperty('keystore') != null) {
 				storeFile file(props['keystore'])
 				storePassword props['keystore.password']
 				keyAlias props['key']
 				keyPassword props['key.password']
-			}
-		} else {
-			release {
-				initWith debug
+			} else {
+				storeFile debug.storeFile
+				storePassword debug.storePassword
+				keyAlias debug.keyAlias
+				keyPassword debug.keyPassword
 			}
 		}
 	}

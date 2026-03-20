@@ -1224,10 +1224,12 @@ void Server::handleCommand_Interact(NetworkPacket *pkt)
 			bool collision = false;
 			const ItemDefinition &def = selected_item->getDefinition(m_itemdef);
 			const NodeDefManager *nodedef = m_nodedef;
-			const ContentFeatures &f_under = nodedef->get(m_env->getMap().getNode(pointed.node_undersurface));
+			bool is_valid_under;
+			MapNode n_under = m_env->getMap().getNode(pointed.node_undersurface, &is_valid_under);
+			const ContentFeatures &f_under = is_valid_under ? nodedef->get(n_under) : nodedef->get(CONTENT_IGNORE);
 
 			v3s16 p_place = pointed.node_abovesurface;
-			if (f_under.buildable_to)
+			if (is_valid_under && f_under.buildable_to)
 				p_place = pointed.node_undersurface;
 
 			if (def.type == ITEM_NODE) {
