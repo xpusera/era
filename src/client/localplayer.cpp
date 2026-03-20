@@ -614,6 +614,38 @@ void LocalPlayer::move(f32 dtime, Environment *env,
 	m_speed += m_added_velocity;
 	m_added_velocity = v3f(0.0f);
 
+	if (!free_move && !is_climbing && !in_liquid && !in_liquid_stable) {
+		const NodeDefManager *nodemgr = m_client->ndef();
+		const ContentFeatures &f = nodemgr->get(map->getNode(m_standing_node));
+		float slipperiness = 0.6f;
+		if (f.walkable) {
+			int slippery = itemgroup_get(f.groups, "slippery");
+			if (slippery >= 3)
+				slipperiness = 0.98f; // Ice
+			else if (slippery == 2)
+				slipperiness = 0.8f; // Slime
+			else if (slippery == 1)
+				slipperiness = 0.98f; // Generic slippery
+		}
+
+		float friction;
+		if (touching_ground) {
+			friction = slipperiness * 0.91f;
+		} else {
+			friction = 0.98f;
+		}
+
+		float friction_dt = std::pow(friction, dtime / 0.05f);
+		m_speed.X *= friction_dt;
+		m_speed.Z *= friction_dt;
+		if (!touching_ground)
+			m_speed.Y *= std::pow(0.98f, dtime / 0.05f);
+
+		if (std::abs(m_speed.X) < 0.001f * BS) m_speed.X = 0;
+		if (std::abs(m_speed.Z) < 0.001f * BS) m_speed.Z = 0;
+		if (std::abs(m_speed.Y) < 0.001f * BS) m_speed.Y = 0;
+	}
+
 	if (m_fog_boundary.active && m_fog_boundary.radius > 0.0f) {
 		v3f p_node = position * (1.0f / BS);
 		f32 d = sdf_boundary(m_fog_boundary, p_node);
@@ -1540,10 +1572,7 @@ float LocalPlayer::getSlipFactor(Environment *env, const v3f &speedH)
 		slippery = itemgroup_get(f.groups, "slippery");
 
 	if (slippery >= 1) {
-		if (speedH == v3f(0.0f))
-			slippery *= 2;
-
-		return core::clamp(1.0f / (slippery + 1), 0.001f, 1.0f);
+		return 0.1f;
 	}
 	return 1.0f;
 }

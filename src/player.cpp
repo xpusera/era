@@ -46,18 +46,18 @@ Player::Player(const std::string &name, IItemDefManager *idef):
 
 	// Initialize movement settings at default values, so movement can work
 	// if the server fails to send them
-	movement_acceleration_default   = 3    * BS;
-	movement_acceleration_air       = 2    * BS;
-	movement_acceleration_fast      = 10   * BS;
-	movement_speed_walk             = 4    * BS;
-	movement_speed_crouch           = 1.35 * BS;
-	movement_speed_fast             = 20   * BS;
-	movement_speed_climb            = 2    * BS;
-	movement_speed_jump             = 6.5  * BS;
-	movement_liquid_fluidity        = 1    * BS;
-	movement_liquid_fluidity_smooth = 0.5  * BS;
-	movement_liquid_sink            = 10   * BS;
-	movement_gravity                = 9.81 * BS;
+	movement_acceleration_default   = 30    * BS;
+	movement_acceleration_air       = 2     * BS;
+	movement_acceleration_fast      = 30    * BS;
+	movement_speed_walk             = 4.317 * BS;
+	movement_speed_crouch           = 1.3   * BS;
+	movement_speed_fast             = 5.612 * BS;
+	movement_speed_climb            = 3     * BS;
+	movement_speed_jump             = 9.4   * BS;
+	movement_liquid_fluidity        = 1     * BS;
+	movement_liquid_fluidity_smooth = 0.5   * BS;
+	movement_liquid_sink            = 20    * BS;
+	movement_gravity                = 32.0  * BS;
 	local_animation_speed           = 0.0;
 
 	hud_flags =

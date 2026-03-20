@@ -1220,12 +1220,51 @@ void Server::handleCommand_Interact(NetworkPacket *pkt)
 				return;
 
 			pointed_object->rightClick(playersao);
-		} else if (m_script->item_OnPlace(selected_item, playersao, pointed)) {
-			// Placement was handled in lua
+		} else {
+			bool collision = false;
+			const ItemDefinition &def = selected_item->getDefinition(m_itemdef);
+			const NodeDefManager *nodedef = m_nodedef;
+			const ContentFeatures &f_under = nodedef->get(m_env->getMap().getNode(pointed.node_undersurface));
 
-			// Apply returned ItemStack
-			if (selected_item.has_value() && playersao->setWieldedItem(*selected_item))
-				SendInventory(player, true);
+			v3s16 p_place = pointed.node_abovesurface;
+			if (f_under.buildable_to)
+				p_place = pointed.node_undersurface;
+
+			if (def.type == ITEM_NODE) {
+				content_t id;
+				if (nodedef->getId(def.name, id)) {
+					const ContentFeatures &f_place = nodedef->get(id);
+					if (f_place.walkable) {
+						std::vector<aabb3f> nodeboxes;
+						f_place.getCollisionBoxes(&nodeboxes);
+						v3f posf = intToFloat(p_place, BS);
+
+						aabb3f player_box{{0, 0, 0}};
+						playersao->getCollisionBox(&player_box);
+						player_box.MinEdge += playersao->getBasePosition();
+						player_box.MaxEdge += playersao->getBasePosition();
+
+						for (auto box : nodeboxes) {
+							box.MinEdge += posf;
+							box.MaxEdge += posf;
+							if (player_box.intersectsWithBox(box)) {
+								collision = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			if (collision) {
+				verbosestream << "Server: " << player->getName() << " tried to place node in themselves; cancelling." << std::endl;
+			} else if (m_script->item_OnPlace(selected_item, playersao, pointed)) {
+				// Placement was handled in lua
+
+				// Apply returned ItemStack
+				if (selected_item.has_value() && playersao->setWieldedItem(*selected_item))
+					SendInventory(player, true);
+			}
 		}
 
 		if (pointed.type != POINTEDTHING_NODE)
