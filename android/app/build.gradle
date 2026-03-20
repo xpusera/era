@@ -21,21 +21,34 @@ android {
 	if (propfile.exists())
 		props.load(new FileInputStream(propfile))
 
-	if (props.getProperty('keystore') != null) {
-		signingConfigs {
+	signingConfigs {
+		debug {
+			storeFile file('../debug.keystore')
+			storePassword 'android'
+			keyAlias 'androiddebugkey'
+			keyPassword 'android'
+		}
+		if (props.getProperty('keystore') != null) {
 			release {
 				storeFile file(props['keystore'])
 				storePassword props['keystore.password']
 				keyAlias props['key']
 				keyPassword props['key.password']
 			}
-		}
-
-		buildTypes {
+		} else {
 			release {
-				minifyEnabled true
-				signingConfig signingConfigs.release
+				initWith debug
 			}
+		}
+	}
+
+	buildTypes {
+		debug {
+			signingConfig signingConfigs.debug
+		}
+		release {
+			minifyEnabled true
+			signingConfig signingConfigs.release
 		}
 	}
 

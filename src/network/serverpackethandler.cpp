@@ -1236,7 +1236,7 @@ void Server::handleCommand_Interact(NetworkPacket *pkt)
 					const ContentFeatures &f_place = nodedef->get(id);
 					if (f_place.walkable) {
 						std::vector<aabb3f> nodeboxes;
-						f_place.getCollisionBoxes(&nodeboxes);
+						MapNode(id).getCollisionBoxes(nodedef, &nodeboxes);
 						v3f posf = intToFloat(p_place, BS);
 
 						aabb3f player_box{{0, 0, 0}};
