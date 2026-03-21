@@ -53,7 +53,7 @@ Player::Player(const std::string &name, IItemDefManager *idef):
 	movement_speed_crouch           = 1.35 * BS;
 	movement_speed_fast             = 20   * BS;
 	movement_speed_climb            = 2    * BS;
-	movement_speed_jump             = 11.0 * BS;
+	movement_speed_jump             = 8.2  * BS;
 	movement_liquid_fluidity        = 1    * BS;
 	movement_liquid_fluidity_smooth = 0.5  * BS;
 	movement_liquid_sink            = 10   * BS;

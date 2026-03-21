@@ -517,7 +517,7 @@ void set_default_settings()
 	settings->setDefault("movement_speed_crouch", "1.35");
 	settings->setDefault("movement_speed_fast", "20");
 	settings->setDefault("movement_speed_climb", "3");
-	settings->setDefault("movement_speed_jump", "11.0");
+	settings->setDefault("movement_speed_jump", "8.2");
 	settings->setDefault("movement_liquid_fluidity", "1");
 	settings->setDefault("movement_liquid_fluidity_smooth", "0.5");
 	settings->setDefault("movement_liquid_sink", "10");
