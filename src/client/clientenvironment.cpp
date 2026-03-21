@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2017 celeron55, Perttu Ahola <celeron55@gmail.com>
 
+#include <cmath>
 #include "util/serialize.h" // serializeJsonString
 #include "util/pointedthing.h"
 #include "client.h"
@@ -128,9 +129,16 @@ void ClientEnvironment::step(float dtime)
 		lplayer->gravity = 0;
 		if (!free_move) {
 			// Gravity
-			if (!is_climbing && !lplayer->in_liquid)
-				// HACK the factor 2 for gravity is arbitrary and should be removed eventually
-				lplayer->gravity = 2 * lplayer->movement_gravity * lplayer->physics_override.gravity;
+			if (!is_climbing && !lplayer->in_liquid) {
+				lplayer->gravity = 320.0f * lplayer->physics_override.gravity;
+			}
+
+			// Air drag
+			if (!lplayer->touching_ground && !is_climbing && !lplayer->in_liquid) {
+				v3f speed = lplayer->getSpeed();
+				speed *= std::pow(0.98f, dtime_part / 0.05f);
+				lplayer->setSpeed(speed);
+			}
 
 			// Liquid floating / sinking
 			if (!is_climbing && lplayer->in_liquid &&
