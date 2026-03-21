@@ -8,6 +8,7 @@
 #include "constants.h"
 #include "inventory.h"
 #include "irrlicht_changes/printing.h"
+#include "nodedef.h"
 #include "player_sao.h"
 #include "scripting_server.h"
 #include "server.h"
