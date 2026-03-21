@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <map>
 #include "irrlichttypes_bloated.h"
 #include <iostream>
 #include <vector>
