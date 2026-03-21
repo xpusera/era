@@ -75,6 +75,10 @@ struct ObjectProperties
 	bool shaded = true;
 	bool show_on_minimap = false;
 	bool nametag_scale_z = false;
+	bool head_awareness = false;
+	bool body_rotation_smoothing = false;
+	bool pathfinding_block_awareness = false;
+	std::map<std::string, float> pathfinding_costs;
 
 	ObjectProperties();
 

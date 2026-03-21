@@ -194,16 +194,80 @@ void LuaEntitySAO::step(float dtime, bool send_recommended)
 				(fabs(m_velocity.Z) > 0.001 || fabs(m_velocity.X) > 0.001)) {
 			float target_yaw = atan2(m_velocity.Z, m_velocity.X) * 180 / M_PI
 				+ m_prop.automatic_face_movement_dir_offset;
-			float max_rotation_per_sec =
-					m_prop.automatic_face_movement_max_rotation_per_sec;
 
-			if (max_rotation_per_sec > 0) {
-				m_rotation.Y = wrapDegrees_0_360(m_rotation.Y);
-				wrappedApproachShortest(m_rotation.Y, target_yaw,
-					dtime * max_rotation_per_sec, 360.f);
+			if (m_prop.body_rotation_smoothing) {
+				m_logical_yaw = target_yaw;
 			} else {
-				// Negative values of max_rotation_per_sec mean disabled.
-				m_rotation.Y = target_yaw;
+				float max_rotation_per_sec =
+						m_prop.automatic_face_movement_max_rotation_per_sec;
+
+				if (max_rotation_per_sec > 0) {
+					m_rotation.Y = wrapDegrees_0_360(m_rotation.Y);
+					wrappedApproachShortest(m_rotation.Y, target_yaw,
+						dtime * max_rotation_per_sec, 360.f);
+				} else {
+					// Negative values of max_rotation_per_sec mean disabled.
+					m_rotation.Y = target_yaw;
+				}
+			}
+		}
+
+		if (m_prop.body_rotation_smoothing) {
+			float target_yaw = m_logical_yaw;
+			bool moving = (fabs(m_velocity.Z) > 0.001 || fabs(m_velocity.X) > 0.001);
+			float interp_speed = 180.0f; // Default interpolation speed
+
+			if (!moving) {
+				// When standing still: render yaw slowly rotates toward head look direction
+				target_yaw = m_rotation.Y + m_head_rotation.Y;
+				interp_speed = 90.0f;
+			}
+
+			m_rotation.Y = wrapDegrees_0_360(m_rotation.Y);
+			wrappedApproachShortest(m_rotation.Y, target_yaw, dtime * interp_speed, 360.0f);
+		}
+
+		if (m_prop.pathfinding_block_awareness) {
+			m_pathfinding_timer++;
+
+			if (m_pathfinding_timer >= 20 || m_stuck_timer >= 1.0f) {
+				m_pathfinding_timer = 0;
+				m_env->getScriptIface()->luaentity_on_recalculate_path(m_id);
+			}
+
+			v3f pos = getBasePosition();
+			if (pos.getDistanceFromSQ(m_last_pos_for_stuck_check) < 0.01f * BS * BS) {
+				m_stuck_timer += dtime;
+			} else {
+				m_stuck_timer = 0;
+				m_last_pos_for_stuck_check = pos;
+			}
+
+			if (m_stuck_timer >= 0.5f && (fabs(m_velocity.Z) > 0.001 || fabs(m_velocity.X) > 0.001)) {
+				v3f dir = m_velocity;
+				dir.Y = 0;
+				dir.normalize();
+				v3f ahead = pos + dir * BS;
+				MapNode n = m_env->getMap().getNode(floatToInt(ahead, BS));
+				if (m_env->getGameDef()->ndef()->get(n).walkable) {
+					for (float angle : {45.0f, -45.0f}) {
+						float rad = angle * core::DEGTORAD;
+						v3f try_dir(
+							dir.X * cos(rad) - dir.Z * sin(rad),
+							0,
+							dir.X * sin(rad) + dir.Z * cos(rad)
+						);
+						v3f try_ahead = pos + try_dir * BS;
+						MapNode n2 = m_env->getMap().getNode(floatToInt(try_ahead, BS));
+						if (!m_env->getGameDef()->ndef()->get(n2).walkable) {
+							m_velocity.X = try_dir.X * m_velocity.getLength();
+							m_velocity.Z = try_dir.Z * m_velocity.getLength();
+							if (m_prop.body_rotation_smoothing)
+								m_logical_yaw = atan2(m_velocity.Z, m_velocity.X) * core::RADTODEG;
+							break;
+						}
+					}
+				}
 			}
 		}
 	}
@@ -211,6 +275,68 @@ void LuaEntitySAO::step(float dtime, bool send_recommended)
 	if (std::abs(m_prop.automatic_rotate) > 0.001f) {
 		m_rotation_add_yaw = modulo360f(m_rotation_add_yaw + dtime * core::RADTODEG *
 				m_prop.automatic_rotate);
+	}
+
+	if (m_prop.head_awareness) {
+		v3f pos = getBasePosition();
+		std::vector<ServerActiveObject *> objects;
+		m_env->getObjectsInsideRadius(objects, pos, 16.0f * BS, [](ServerActiveObject *obj) {
+			return obj->getType() == ACTIVEOBJECT_TYPE_PLAYER && !obj->isGone();
+		});
+
+		PlayerSAO *target_player = nullptr;
+		float min_dist = 1e9;
+		for (auto *obj : objects) {
+			float d = obj->getBasePosition().getDistanceFromSQ(pos);
+			if (d < min_dist) {
+				min_dist = d;
+				target_player = (PlayerSAO *)obj;
+			}
+		}
+
+		if (target_player) {
+			if (m_head_wander_timer <= 0.0f) {
+				m_head_looking_at_player = (myrand_range(0, 100) < 50);
+				m_head_wander_timer = myrand_range(2.0f, 5.0f);
+			}
+		} else {
+			m_head_looking_at_player = false;
+		}
+
+		m_head_wander_timer -= dtime;
+
+		v3f target_head_rot = v3f(0, 0, 0);
+		if (m_head_looking_at_player && target_player) {
+			v3f dir = target_player->getEyePosition() - (pos + v3f(0, m_prop.eye_height * BS, 0));
+			float target_yaw = atan2(dir.Z, dir.X) * core::RADTODEG;
+			float target_pitch = atan2(-dir.Y, hypot(dir.X, dir.Z)) * core::RADTODEG;
+			target_head_rot = v3f(target_pitch, target_yaw - m_rotation.Y, 0);
+		} else {
+			if (m_head_wander_timer <= 0.0f) {
+				m_head_wander_yaw = myrand_range(-45.0f, 45.0f);
+				m_head_wander_timer = myrand_range(2.0f, 5.0f);
+			}
+			target_head_rot = v3f(0, m_head_wander_yaw, 0);
+		}
+
+		float step = 90.0f * dtime;
+		wrappedApproachShortest(m_head_rotation.Y, target_head_rot.Y, step, 360.0f);
+		m_head_rotation.Y = rangelim(m_head_rotation.Y, -75.0f, 75.0f);
+
+		if (m_head_looking_at_player) {
+			float dp = target_head_rot.X - m_head_rotation.X;
+			m_head_rotation.X += rangelim(dp, -step, step);
+		} else {
+			float dp = -m_head_rotation.X;
+			m_head_rotation.X += rangelim(dp, -step, step);
+		}
+
+		BoneOverride head_bone = getBoneOverride("head");
+		head_bone.rotation.next_radians = m_head_rotation * core::DEGTORAD;
+		head_bone.rotation.next = core::quaternion(head_bone.rotation.next_radians);
+		head_bone.rotation.absolute = false;
+		head_bone.rotation.interp_duration = 0.1f;
+		setBoneOverride("head", head_bone);
 	}
 
 	if(m_registered) {

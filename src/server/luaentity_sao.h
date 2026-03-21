@@ -95,6 +95,16 @@ private:
 	float m_last_sent_position_timer = 0.0f;
 	float m_last_sent_move_precision = 0.0f;
 
+	v3f m_head_rotation;
+	float m_head_wander_timer = 0.0f;
+	float m_head_wander_yaw = 0.0f;
+	bool m_head_looking_at_player = false;
+	float m_logical_yaw = 0.0f;
+
+	u32 m_pathfinding_timer = 0;
+	v3f m_last_pos_for_stuck_check;
+	float m_stuck_timer = 0.0f;
+
 	std::string m_texture_modifier;
 	bool m_texture_modifier_sent = false;
 };

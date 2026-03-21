@@ -8,6 +8,8 @@
 /* Includes                                                                   */
 /******************************************************************************/
 #include <vector>
+#include <map>
+#include <string>
 #include "irr_v3d.h"
 
 /******************************************************************************/
@@ -46,4 +48,5 @@ std::vector<v3s16> get_path(Map *map, const NodeDefManager *ndef,
 		unsigned int searchdistance,
 		unsigned int max_jump,
 		unsigned int max_drop,
-		PathAlgorithm algo);
+		PathAlgorithm algo,
+		const std::map<std::string, float> &costs = {});

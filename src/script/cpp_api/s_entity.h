@@ -34,6 +34,7 @@ public:
 	void luaentity_on_attach_child(u16 id, ServerActiveObject *child);
 	void luaentity_on_detach_child(u16 id, ServerActiveObject *child);
 	void luaentity_on_detach(u16 id, ServerActiveObject *parent);
+	void luaentity_on_recalculate_path(u16 id);
 private:
 	bool luaentity_run_simple_callback(u16 id, ServerActiveObject *sao,
 		const char *field);

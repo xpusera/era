@@ -340,3 +340,8 @@ void ScriptApiEntity::luaentity_on_detach(u16 id, ServerActiveObject *parent)
 {
 	luaentity_run_simple_callback(id, parent, "on_detach");
 }
+
+void ScriptApiEntity::luaentity_on_recalculate_path(u16 id)
+{
+	luaentity_run_simple_callback(id, nullptr, "on_recalculate_path");
+}

@@ -65,7 +65,7 @@ public:
 	PathCost &operator= (const PathCost &b);
 
 	bool valid = false;              /**< movement is possible         */
-	int  value = 0;                  /**< cost of movement             */
+	float value = 0;                  /**< cost of movement             */
 	int  y_change = 0;               /**< change of y position of movement */
 	bool updated = false;            /**< this cost has ben calculated */
 
@@ -104,8 +104,8 @@ public:
 	bool      valid = false;               /**< node is on surface                    */
 	bool      target = false;              /**< node is target position               */
 	bool      source = false;              /**< node is stating position              */
-	int       totalcost = -1;              /**< cost to move here from starting point */
-	int       estimated_cost = -1;         /**< totalcost + heuristic cost to end     */
+	float     totalcost = -1;              /**< cost to move here from starting point */
+	float     estimated_cost = -1;         /**< totalcost + heuristic cost to end     */
 	v3s16     sourcedir;                   /**< origin of movement for current cost   */
 	v3s16     pos;                         /**< real position of node                 */
 	PathCost directions[4];                /**< cost in different directions          */
@@ -165,8 +165,10 @@ private:
 class Pathfinder {
 
 public:
+	float getNodeCost(v3s16 pos);
 	Pathfinder() = delete;
-	Pathfinder(Map *map, const NodeDefManager *ndef) : m_map(map), m_ndef(ndef) {}
+	Pathfinder(Map *map, const NodeDefManager *ndef, const std::map<std::string, float> &costs = {})
+		: m_map(map), m_ndef(ndef), m_costs(costs) {}
 
 	/**
 	 * path evaluation function
@@ -237,7 +239,14 @@ private:
 	 * @param pos position to calc distance
 	 * @return integer distance
 	 */
-	int           getXZManhattanDist(v3s16 pos);
+	float         getXZManhattanDist(v3s16 pos);
+
+	/**
+	 * calculate 3D Manhattan distance to target
+	 * @param pos position to calc distance
+	 * @return integer distance
+	 */
+	float         getXYZManhattanDist(v3s16 pos);
 
 	/**
 	 * calculate cost of movement
@@ -251,11 +260,11 @@ private:
 	 * recursive update whole search areas total cost information
 	 * @param ipos position to check next
 	 * @param srcdir positionc checked last time
-	 * @param total_cost cost of moving to ipos
+	 * @param current_cost cost of moving to ipos
 	 * @param level current recursion depth
 	 * @return true/false path to destination has been found
 	 */
-	bool          updateAllCosts(v3s16 ipos, v3s16 srcdir, int current_cost, int level);
+	bool          updateAllCosts(v3s16 ipos, v3s16 srcdir, float current_cost, int level);
 
 	/**
 	 * try to find a path to destination using a heuristic function
@@ -292,7 +301,7 @@ private:
 
 	int m_maxdrop = 0;                /**< maximum number of blocks a path may drop */
 	int m_maxjump = 0;                /**< maximum number of blocks a path may jump */
-	int m_min_target_distance = 0;    /**< current smalest path to target           */
+	float m_min_target_distance = 0;    /**< current smalest path to target           */
 
 	bool m_prefetch = true;              /**< prefetch cost data                       */
 
@@ -309,6 +318,7 @@ private:
 	Map *m_map = nullptr;
 
 	const NodeDefManager *m_ndef = nullptr;
+	std::map<std::string, float> m_costs;
 
 	friend class PathfinderCompareHeuristic;
 
@@ -396,9 +406,10 @@ std::vector<v3s16> get_path(Map* map, const NodeDefManager *ndef,
 		unsigned int searchdistance,
 		unsigned int max_jump,
 		unsigned int max_drop,
-		PathAlgorithm algo)
+		PathAlgorithm algo,
+		const std::map<std::string, float> &costs)
 {
-	return Pathfinder(map, ndef).getPath(source, destination,
+	return Pathfinder(map, ndef, costs).getPath(source, destination,
 				searchdistance, max_jump, max_drop, algo);
 }
 
@@ -802,6 +813,23 @@ v3s16 Pathfinder::getRealPos(v3s16 ipos)
 }
 
 /******************************************************************************/
+float Pathfinder::getNodeCost(v3s16 pos)
+{
+	MapNode n = m_map->getNode(pos);
+	const ContentFeatures &f = m_ndef->get(n);
+
+	auto it = m_costs.find(f.name);
+	if (it != m_costs.end()) {
+		if (it->second < 0) return -1.0f;
+		return it->second;
+	}
+
+	if (f.name == "default:lava" || f.name == "default:fire") return -1.0f;
+	if (f.name == "default:water_source" || f.name == "default:water_flowing") return 4.0f;
+
+	return 1.0f;
+}
+
 PathCost Pathfinder::calcCost(v3s16 pos, v3s16 dir)
 {
 	PathCost retval;
@@ -839,12 +867,15 @@ PathCost Pathfinder::calcCost(v3s16 pos, v3s16 dir)
 
 		//test if the same-height neighbor is suitable
 		if (m_ndef->get(node_below_pos2).walkable) {
-			//SUCCESS!
-			retval.valid = true;
-			retval.value = 1;
-			retval.y_change = 0;
-			DEBUG_OUT("Pathfinder: "<< pos
-					<< " cost same height found" << std::endl);
+			float cost = getNodeCost(pos2);
+			if (cost >= 0) {
+				//SUCCESS!
+				retval.valid = true;
+				retval.value = cost;
+				retval.y_change = 0;
+				DEBUG_OUT("Pathfinder: "<< pos
+						<< " cost same height found" << std::endl);
+			}
 		}
 		else {
 			//test if we can fall a couple of nodes (m_maxdrop)
@@ -863,12 +894,15 @@ PathCost Pathfinder::calcCost(v3s16 pos, v3s16 dir)
 					(node_at_pos.param0 != CONTENT_IGNORE) &&
 					(m_ndef->get(node_at_pos).walkable)) {
 				if ((pos2.Y - testpos.Y - 1) <= m_maxdrop) {
-					//SUCCESS!
-					retval.valid = true;
-					retval.value = 2;
-					//difference of y-pos +1 (target node is ABOVE solid node)
-					retval.y_change = ((testpos.Y - pos2.Y) +1);
-					DEBUG_OUT("Pathfinder cost below height found" << std::endl);
+					float cost = getNodeCost(testpos + v3s16(0, 1, 0));
+					if (cost >= 0) {
+						//SUCCESS!
+						retval.valid = true;
+						retval.value = cost + 1.0f;
+						//difference of y-pos +1 (target node is ABOVE solid node)
+						retval.y_change = ((testpos.Y - pos2.Y) + 1);
+						DEBUG_OUT("Pathfinder cost below height found" << std::endl);
+					}
 				}
 				else {
 					DEBUG_OUT("Pathfinder:"
@@ -917,11 +951,14 @@ PathCost Pathfinder::calcCost(v3s16 pos, v3s16 dir)
 				(!m_ndef->get(node_target).walkable)) {
 
 			if (targetpos.Y - pos2.Y <= m_maxjump) {
-				//SUCCESS!
-				retval.valid = true;
-				retval.value = 2;
-				retval.y_change = (targetpos.Y - pos2.Y);
-				DEBUG_OUT("Pathfinder cost above found" << std::endl);
+				float cost = getNodeCost(targetpos);
+				if (cost >= 0) {
+					//SUCCESS!
+					retval.valid = true;
+					retval.value = cost + 1.0f;
+					retval.y_change = (targetpos.Y - pos2.Y);
+					DEBUG_OUT("Pathfinder cost above found" << std::endl);
+				}
 			}
 			else {
 				DEBUG_OUT("Pathfinder: distance to surface above too big: "
@@ -1079,6 +1116,18 @@ int Pathfinder::getXZManhattanDist(v3s16 pos)
 	return (max_x - min_x) + (max_z - min_z);
 }
 
+float Pathfinder::getXYZManhattanDist(v3s16 pos)
+{
+	int min_x = MYMIN(pos.X, m_destination.X);
+	int max_x = MYMAX(pos.X, m_destination.X);
+	int min_y = MYMIN(pos.Y, m_destination.Y);
+	int max_y = MYMAX(pos.Y, m_destination.Y);
+	int min_z = MYMIN(pos.Z, m_destination.Z);
+	int max_z = MYMAX(pos.Z, m_destination.Z);
+
+	return (float)((max_x - min_x) + (max_y - min_y) + (max_z - min_z));
+}
+
 
 
 /******************************************************************************/
@@ -1112,7 +1161,7 @@ bool Pathfinder::updateCostHeuristic(v3s16 isource, v3s16 idestination)
 	s_pos.totalcost = 0;
 
 	// estimated cost from start to finish
-	int cur_manhattan = getXZManhattanDist(destination);
+	float cur_manhattan = getXYZManhattanDist(destination);
 	s_pos.estimated_cost = cur_manhattan;
 
 	while (!openList.empty()) {
@@ -1163,7 +1212,7 @@ bool Pathfinder::updateCostHeuristic(v3s16 isource, v3s16 idestination)
 
 			if (cost.valid && !n_pos.is_closed && !n_pos.is_open) {
 				// heuristic function; estimate cost from neighbor to destination
-				cur_manhattan = getXZManhattanDist(neighbor);
+				cur_manhattan = getXYZManhattanDist(neighbor);
 
 				// add neighbor to open list
 				n_pos.sourcedir = invert(direction_3d);

@@ -211,3 +211,31 @@ Extended volumetric and height-based fog controls.
 - `params`:
   - `fog`: table (FogParams)
   - `boundary`: table (FogBoundaryParams)
+
+## Entity Intelligence (ObjectProperties)
+
+This fork adds Minecraft-style entity intelligence behaviors configurable via `ObjectProperties`.
+
+### New Properties
+
+- `head_awareness`: boolean (default `false`)
+  - Enables independent head rotation. The entity will look at nearby players (~16 blocks) or wander randomly.
+  - Controls the "head" bone via overrides.
+- `body_rotation_smoothing`: boolean (default `false`)
+  - Separates logical movement yaw from visual render yaw.
+  - Movement direction updates logical yaw instantly, while render yaw smoothly interpolates toward it.
+  - When standing still, render yaw slowly follows head look direction.
+- `pathfinding_block_awareness`: boolean (default `false`)
+  - Entities detect when they are stuck and attempt fallback steering (trying 45° left/right to bypass obstacles).
+  - Enables path recalculation timers.
+- `pathfinding_costs`: table `{[nodename] = cost}`
+  - Custom pathfinding costs for `minetest.find_path`.
+  - Positive values increase cost (e.g., `4` for water).
+  - Negative values (e.g., `-1`) make the node impassable.
+
+### Pathfinding API Update
+
+`minetest.find_path(pos1, pos2, searchdistance, max_jump, max_drop, algorithm, costs)`
+- Added optional `costs` parameter (table).
+- Costs table format: `{[nodename] = cost_multiplier}`.
+- Heuristic updated to 3D Manhattan distance for better results.
