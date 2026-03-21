@@ -81,7 +81,8 @@ void ClientEnvironment::step(float dtime)
 
 	// Get local player
 	LocalPlayer *lplayer = getLocalPlayer();
-	assert(lplayer);
+	if (!lplayer)
+		return;
 	// collision info queue
 	std::vector<CollisionInfo> player_collisions;
 
@@ -136,7 +137,9 @@ void ClientEnvironment::step(float dtime)
 			// Air drag
 			if (!lplayer->touching_ground && !is_climbing && !lplayer->in_liquid) {
 				v3f speed = lplayer->getSpeed();
-				speed *= std::pow(0.98f, dtime_part / 0.05f);
+				if (dtime_part > 0.0f) {
+					speed *= std::pow(0.98f, dtime_part / 0.05f);
+				}
 				lplayer->setSpeed(speed);
 			}
 
