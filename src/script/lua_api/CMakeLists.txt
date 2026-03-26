@@ -11,6 +11,7 @@ set(common_SCRIPT_LUA_API_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/l_htmlview.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_http.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_inventory.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/l_javamod.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_ipc.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_item.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_itemstackmeta.cpp

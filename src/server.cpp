@@ -43,6 +43,7 @@
 
 #ifdef __ANDROID__
 #include "htmlview_jni.h"
+#include "javamod_jni.h"
 #endif
 
 // Mapgen
@@ -671,6 +672,7 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 
 #ifdef __ANDROID__
 	htmlview_jni_poll(getScriptIface());
+	javamod_jni_update_all("engine", "{}");
 #endif
 
 	{
