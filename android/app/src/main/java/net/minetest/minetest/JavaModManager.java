@@ -41,7 +41,7 @@ public class JavaModManager {
             // Let's assume the 'id' includes the class name, like "modname:com.example.ModClass"
             String className = id.contains(":") ? id.substring(id.indexOf(":") + 1) : id;
             Class<?> modClass = classLoader.loadClass(className);
-            LuantiMod modInstance = (LuantiMod) modClass.newInstance();
+            LuantiMod modInstance = (LuantiMod) modClass.getDeclaredConstructor().newInstance();
             mLoadedMods.put(id, modInstance);
             Log.i(TAG, "Loaded Java mod: " + id);
         } catch (Exception e) {
