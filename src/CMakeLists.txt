@@ -420,6 +420,7 @@ set(independent_SRCS
 	httpfetch.cpp
 	hud_element.cpp
 	inventory.cpp
+	javamod_jni.cpp
 	itemstackmetadata.cpp
 	log.cpp
 	metadata.cpp

@@ -63,6 +63,7 @@ import java.util.Objects;
 @SuppressWarnings("unused")
 public class GameActivity extends SDLActivity {
 	private HTMLViewManager mHtmlViewManager;
+	private JavaModManager mJavaModManager;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -71,6 +72,7 @@ public class GameActivity extends SDLActivity {
 		if (content instanceof ViewGroup) {
 			mHtmlViewManager = new HTMLViewManager(this, (ViewGroup) content);
 		}
+		mJavaModManager = new JavaModManager(this, getApplicationContext());
 
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 			boolean needCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED;
@@ -416,5 +418,30 @@ public class GameActivity extends SDLActivity {
 	public void setPlayingNowNotification(boolean show) {
 		gameNotificationShown = show;
 		updateGameNotification();
+	}
+
+	public void javamod_load(String id, String dexPath) {
+		if (mJavaModManager != null)
+			mJavaModManager.load(id, dexPath);
+	}
+
+	public void javamod_change(String id, String target, String propertiesJson) {
+		if (mJavaModManager != null)
+			mJavaModManager.change(id, target, propertiesJson);
+	}
+
+	public void javamod_add(String id, String type, String propertiesJson) {
+		if (mJavaModManager != null)
+			mJavaModManager.add(id, type, propertiesJson);
+	}
+
+	public void javamod_remove(String id, String target) {
+		if (mJavaModManager != null)
+			mJavaModManager.remove(id, target);
+	}
+
+	public void javamod_update_all(String target, String propertiesJson) {
+		if (mJavaModManager != null)
+			mJavaModManager.updateAll(target, propertiesJson);
 	}
 }
