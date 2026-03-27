@@ -72,7 +72,7 @@ public class GameActivity extends SDLActivity {
 		if (content instanceof ViewGroup) {
 			mHtmlViewManager = new HTMLViewManager(this, (ViewGroup) content);
 		}
-		mJavaModManager = new JavaModManager(this);
+		mJavaModManager = new JavaModManager(this, getApplicationContext());
 
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 			boolean needCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED;

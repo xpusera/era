@@ -1,5 +1,6 @@
 package net.minetest.minetest;
 
+import android.app.Activity;
 import android.content.Context;
 import android.util.Log;
 
@@ -11,10 +12,12 @@ import dalvik.system.DexClassLoader;
 
 public class JavaModManager {
     private static final String TAG = "JavaModManager";
+    private final Activity mActivity;
     private final Context mContext;
     private final Map<String, LuantiMod> mLoadedMods = new HashMap<>();
 
-    public JavaModManager(Context context) {
+    public JavaModManager(Activity activity, Context context) {
+        mActivity = activity;
         mContext = context;
     }
 
@@ -42,6 +45,7 @@ public class JavaModManager {
             String className = id.contains(":") ? id.substring(id.indexOf(":") + 1) : id;
             Class<?> modClass = classLoader.loadClass(className);
             LuantiMod modInstance = (LuantiMod) modClass.getDeclaredConstructor().newInstance();
+            modInstance.init(mActivity, mContext);
             mLoadedMods.put(id, modInstance);
             Log.i(TAG, "Loaded Java mod: " + id);
         } catch (Exception e) {
