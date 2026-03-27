@@ -1,0 +1,63 @@
+name: Compile JavaMod Examples
+
+on:
+  push:
+    paths:
+      - 'mods/**/java/*.java'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Compile all mod Java files to dex
+        run: |
+          # Find android.jar
+          ANDROID_JAR=$(find $ANDROID_HOME/platforms -name "android.jar" | sort -r | head -n 1)
+          echo "Using $ANDROID_JAR"
+
+          # Prepare build dir
+          mkdir -p build/classes
+
+          # Compile LuantiMod interface (base requirement)
+          javac android/app/src/main/java/net/minetest/minetest/LuantiMod.java -d build/classes --boot-class-path $ANDROID_JAR
+
+          # Find all Java files in mods/*/java/
+          for java_file in mods/*/java/*.java; do
+            echo "Processing $java_file"
+            mod_dir=$(dirname $(dirname $java_file))
+            class_name=$(basename $java_file .java)
+
+            # Compile mod class
+            javac -cp "android/app/src/main/java:$ANDROID_JAR" $java_file -d build/classes
+
+            # Find the actual .class file path (might be in package subfolders)
+            class_file=$(find build/classes -name "$class_name.class")
+
+            # Convert to dex using d8
+            # Include LuantiMod.class in the dex as it's needed by the mod
+            d8 --output $mod_dir $class_file build/classes/net/minetest/minetest/LuantiMod.class --lib $ANDROID_JAR
+
+            # d8 outputs classes.dex, rename it
+            mv $mod_dir/classes.dex $mod_dir/$class_name.dex
+            echo "Generated $mod_dir/$class_name.dex"
+          done
+
+      - name: Commit compiled dex files
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add mods/**/*.dex
+          git diff --staged --quiet || (git commit -m "Auto compile javamod .dex files" && git push)
