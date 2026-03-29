@@ -13,6 +13,9 @@
 #include <zstd.h>
 #include "cpp_api/s_security.h"
 #include "porting.h"
+#ifdef __ANDROID__
+#include "porting_android.h"
+#endif
 #include "convert_json.h"
 #include "log.h"
 #include "log_internal.h"
@@ -532,8 +535,8 @@ int ModApiUtil::l_request_insecure_environment(lua_State *L)
 	return 1;
 }
 
-// get_version()
-int ModApiUtil::l_get_version(lua_State *L)
+	// get_version()
+	int ModApiUtil::l_get_version(lua_State *L)
 {
 	lua_createtable(L, 0, 3);
 	int table = lua_gettop(L);
@@ -613,6 +616,71 @@ int ModApiUtil::l_colorspec_to_colorstring(lua_State *L)
 	}
 
 	return 0;
+}
+
+
+// get_android_sensors()
+int ModApiUtil::l_get_android_sensors(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+
+#ifdef __ANDROID__
+	float v[7] = {0};
+	int mask = 0;
+	if (!porting::getAndroidSensors(v, &mask)) {
+		lua_pushnil(L);
+		return 1;
+	}
+
+	auto push_vec3 = [&](int idx, bool avail) {
+		lua_createtable(L, 0, 4);
+		int t = lua_gettop(L);
+		lua_pushboolean(L, avail);
+		lua_setfield(L, t, "available");
+		if (avail) {
+			lua_pushnumber(L, v[idx + 0]);
+			lua_setfield(L, t, "x");
+			lua_pushnumber(L, v[idx + 1]);
+			lua_setfield(L, t, "y");
+			lua_pushnumber(L, v[idx + 2]);
+			lua_setfield(L, t, "z");
+		}
+	};
+
+	lua_createtable(L, 0, 5);
+	int root = lua_gettop(L);
+
+	bool accel_avail = (mask & 1) != 0;
+	bool gyro_avail = (mask & 2) != 0;
+	bool light_avail = (mask & 4) != 0;
+
+	push_vec3(0, accel_avail);
+	lua_setfield(L, root, "accelerometer");
+
+	push_vec3(3, gyro_avail);
+	lua_setfield(L, root, "gyroscope");
+
+	lua_createtable(L, 0, 2);
+	int lt = lua_gettop(L);
+	lua_pushboolean(L, light_avail);
+	lua_setfield(L, lt, "available");
+	if (light_avail) {
+		lua_pushnumber(L, v[6]);
+		lua_setfield(L, lt, "lux");
+	}
+	lua_setfield(L, root, "light");
+
+	lua_pushnumber(L, porting::getTimeUs());
+	lua_setfield(L, root, "time_us");
+
+	lua_pushinteger(L, mask);
+	lua_setfield(L, root, "mask");
+
+	return 1;
+#else
+	lua_pushnil(L);
+	return 1;
+#endif
 }
 
 // colorspec_to_bytes(colorspec)
@@ -769,6 +837,7 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 	API_FCT(decode_base64);
 
 	API_FCT(get_version);
+	API_FCT(get_android_sensors);
 	API_FCT(sha1);
 	API_FCT(sha256);
 	API_FCT(colorspec_to_colorstring);
@@ -807,6 +876,7 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 	API_FCT(decode_base64);
 
 	API_FCT(get_version);
+	API_FCT(get_android_sensors);
 	API_FCT(sha1);
 	API_FCT(sha256);
 	API_FCT(colorspec_to_colorstring);
@@ -842,6 +912,7 @@ void ModApiUtil::InitializeSSCSM(lua_State *L, int top)
 	API_FCT(decode_base64);
 
 	API_FCT(get_version);
+	API_FCT(get_android_sensors);
 	API_FCT(sha1);
 	API_FCT(sha256);
 	API_FCT(colorspec_to_colorstring);
@@ -887,6 +958,7 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	API_FCT(decode_base64);
 
 	API_FCT(get_version);
+	API_FCT(get_android_sensors);
 	API_FCT(sha1);
 	API_FCT(sha256);
 	API_FCT(colorspec_to_colorstring);

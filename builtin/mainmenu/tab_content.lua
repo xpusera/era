@@ -76,7 +76,7 @@ local function get_formspec(tabview, name, tabdata)
 		pkgmgr.render_packagelist(packages, use_technical_names, update_icons),
 		";", tabdata.selected_pkg, "]",
 
-		"button[0.4,5.8;6.3,0.9;btn_contentdb;", contentdb_label, "]"
+		"button[0.4,5.8;3.05,0.9;btn_contentdb;", contentdb_label, "]"
 	}
 
 	local selected_pkg

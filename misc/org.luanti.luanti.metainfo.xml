@@ -9,7 +9,7 @@
         <id>net.minetest.minetest</id>
     </replaces>
 
-    <name>Luanti</name>
+    <name>Minetek</name>
     <summary>Block-based multiplayer game platform</summary>
     <summary xml:lang="de">Blockbasierte Mehrspieler-Spieleplattform</summary>
     <summary xml:lang="fr">Plate-forme de jeu multijoueurs à base de blocs</summary>

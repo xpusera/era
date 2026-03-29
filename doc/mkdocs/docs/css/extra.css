@@ -1,15 +1,53 @@
-/* Fix partly obscured last TOC element */
-.wy-menu {
-  padding-bottom: 20px;
+/* Zed-ish dark docs styling for MkDocs Material */
+
+:root {
+	--zed-bg: #0b0f14;
+	--zed-panel: #0f1621;
+	--zed-border: rgba(255, 255, 255, 0.08);
+	--zed-text: rgba(255, 255, 255, 0.88);
+	--zed-muted: rgba(255, 255, 255, 0.62);
+	--zed-accent: #53a6ff;
 }
 
-/* Use Minetest green instead of blue */
-.wy-nav-content a {
-  color: hsl(100, 40%, 40%);
+[data-md-color-scheme="slate"] {
+	--md-default-bg-color: var(--zed-bg);
+	--md-default-fg-color: var(--zed-text);
+	--md-default-fg-color--light: var(--zed-muted);
+	--md-typeset-a-color: var(--zed-accent);
+	--md-primary-fg-color: #0a0e13;
+	--md-accent-fg-color: var(--zed-accent);
 }
-.wy-nav-content a:hover {
-  color: hsl(100, 30%, 30%);
+
+.md-header {
+	border-bottom: 1px solid var(--zed-border);
 }
-.wy-side-nav-search, .wy-nav-top, .wy-menu-vertical a:active {
-  background: hsl(100, 40%, 40%);
+
+.md-sidebar__scrollwrap {
+	border-right: 1px solid var(--zed-border);
+}
+
+.md-nav__title {
+	color: var(--zed-text);
+}
+
+.md-typeset code {
+	background: rgba(255, 255, 255, 0.06);
+	border: 1px solid var(--zed-border);
+	border-radius: 8px;
+	padding: 0.1em 0.35em;
+}
+
+.md-typeset pre > code {
+	background: var(--zed-panel);
+	border: 1px solid var(--zed-border);
+	border-radius: 12px;
+	padding: 14px 16px;
+}
+
+.md-typeset h1, .md-typeset h2, .md-typeset h3 {
+	letter-spacing: -0.01em;
+}
+
+.md-typeset hr {
+	border-bottom: 1px solid var(--zed-border);
 }

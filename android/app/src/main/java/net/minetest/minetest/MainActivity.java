@@ -109,6 +109,12 @@ public class MainActivity extends AppCompatActivity {
 			createNotificationChannel();
 	}
 
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		setIntent(intent);
+	}
+
 	private void checkAppVersion() {
 		if (UnzipService.getIsRunning()) {
 			mProgressBar.setVisibility(View.VISIBLE);

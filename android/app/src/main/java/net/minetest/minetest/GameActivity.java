@@ -46,6 +46,10 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import android.content.res.Configuration;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 
 import androidx.annotation.Keep;
 import androidx.appcompat.app.AlertDialog;
@@ -63,6 +67,49 @@ import java.util.Objects;
 @SuppressWarnings("unused")
 public class GameActivity extends SDLActivity {
 	private HTMLViewManager mHtmlViewManager;
+	private SensorManager mSensorManager;
+	private Sensor mSensorAccel;
+	private Sensor mSensorGyro;
+	private Sensor mSensorLight;
+	private final Object mSensorLock = new Object();
+	private final float[] mAccel = new float[] { 0f, 0f, 0f };
+	private final float[] mGyro = new float[] { 0f, 0f, 0f };
+	private float mLightLux = 0f;
+	private int mSensorMask = 0;
+	private boolean mSensorsRegistered = false;
+	private final SensorEventListener mSensorListener = new SensorEventListener() {
+		@Override
+		public void onSensorChanged(SensorEvent event) {
+			if (event == null || event.sensor == null)
+				return;
+			synchronized (mSensorLock) {
+				switch (event.sensor.getType()) {
+					case Sensor.TYPE_ACCELEROMETER:
+						if (event.values != null && event.values.length >= 3) {
+							mAccel[0] = event.values[0];
+							mAccel[1] = event.values[1];
+							mAccel[2] = event.values[2];
+						}
+						break;
+					case Sensor.TYPE_GYROSCOPE:
+						if (event.values != null && event.values.length >= 3) {
+							mGyro[0] = event.values[0];
+							mGyro[1] = event.values[1];
+							mGyro[2] = event.values[2];
+						}
+						break;
+					case Sensor.TYPE_LIGHT:
+						if (event.values != null && event.values.length >= 1)
+							mLightLux = event.values[0];
+						break;
+				}
+			}
+		}
+
+		@Override
+		public void onAccuracyChanged(Sensor sensor, int accuracy) {
+		}
+	};
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -81,6 +128,84 @@ public class GameActivity extends SDLActivity {
 						1001);
 			}
 		}
+
+		initSensors();
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		registerSensors();
+	}
+
+	@Override
+	protected void onPause() {
+		unregisterSensors();
+		super.onPause();
+	}
+
+	private void initSensors() {
+		try {
+			mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+			if (mSensorManager == null)
+				return;
+			mSensorAccel = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+			mSensorGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+			mSensorLight = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
+			int mask = 0;
+			if (mSensorAccel != null)
+				mask |= 1;
+			if (mSensorGyro != null)
+				mask |= 2;
+			if (mSensorLight != null)
+				mask |= 4;
+			mSensorMask = mask;
+			registerSensors();
+		} catch (Exception ignored) {
+		}
+	}
+
+	private void registerSensors() {
+		try {
+			if (mSensorManager == null || mSensorsRegistered)
+				return;
+			if (mSensorAccel != null)
+				mSensorManager.registerListener(mSensorListener, mSensorAccel, SensorManager.SENSOR_DELAY_GAME);
+			if (mSensorGyro != null)
+				mSensorManager.registerListener(mSensorListener, mSensorGyro, SensorManager.SENSOR_DELAY_GAME);
+			if (mSensorLight != null)
+				mSensorManager.registerListener(mSensorListener, mSensorLight, SensorManager.SENSOR_DELAY_GAME);
+			mSensorsRegistered = true;
+		} catch (Exception ignored) {
+		}
+	}
+
+	private void unregisterSensors() {
+		try {
+			if (mSensorManager == null || !mSensorsRegistered)
+				return;
+			mSensorManager.unregisterListener(mSensorListener);
+			mSensorsRegistered = false;
+		} catch (Exception ignored) {
+		}
+	}
+
+	public int getSensorsAvailabilityMask() {
+		return mSensorMask;
+	}
+
+	public float[] getSensorsSnapshot() {
+		float[] out = new float[7];
+		synchronized (mSensorLock) {
+			out[0] = mAccel[0];
+			out[1] = mAccel[1];
+			out[2] = mAccel[2];
+			out[3] = mGyro[0];
+			out[4] = mGyro[1];
+			out[5] = mGyro[2];
+			out[6] = mLightLux;
+		}
+		return out;
 	}
 
 	@Override
@@ -136,9 +261,19 @@ public class GameActivity extends SDLActivity {
 			mHtmlViewManager.htmlview_run(id, html);
 	}
 
+	public void htmlview_run_worker(String id, String html) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_run_worker(id, html);
+	}
+
 	public void htmlview_run_external(String id, String rootDir, String entry) {
 		if (mHtmlViewManager != null)
 			mHtmlViewManager.htmlview_run_external(id, rootDir, entry);
+	}
+
+	public void htmlview_run_external_worker(String id, String rootDir, String entry) {
+		if (mHtmlViewManager != null)
+			mHtmlViewManager.htmlview_run_external_worker(id, rootDir, entry);
 	}
 
 	public void htmlview_stop(String id) {
