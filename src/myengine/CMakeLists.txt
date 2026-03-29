@@ -1,6 +1,6 @@
 set(myengine_SRCS
-	aliases.cpp
-	registry.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/aliases.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/registry.cpp
 	PARENT_SCOPE
 )
 
