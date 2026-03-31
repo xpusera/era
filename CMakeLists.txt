@@ -12,6 +12,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(GCC_MINIMUM_VERSION "7.5")
 set(CLANG_MINIMUM_VERSION "7.0.1")
 
+find_package(Python3 REQUIRED)
+
 # You should not need to edit these manually, use util/bump_version.sh
 set(VERSION_MAJOR 5)
 set(VERSION_MINOR 16)
