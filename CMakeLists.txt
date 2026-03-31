@@ -5,12 +5,14 @@ endif()
 
 # This can be read from ${PROJECT_NAME} after project() is called
 project(luanti)
-set(PROJECT_NAME_CAPITALIZED "Luanti")
+set(PROJECT_NAME_CAPITALIZED "Minetek")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(GCC_MINIMUM_VERSION "7.5")
 set(CLANG_MINIMUM_VERSION "7.0.1")
+
+find_package(Python3 REQUIRED)
 
 # You should not need to edit these manually, use util/bump_version.sh
 set(VERSION_MAJOR 5)

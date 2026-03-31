@@ -1,0 +1,6 @@
+# myengine Alias Map
+# Format: stable_mod_path = real_generated_path
+
+player.physics.gravity = player_physics_override.gravity
+player.physics.speed = player_physics_override.speed
+world.mapgen.cave_density = world.generation.cave_density_factor

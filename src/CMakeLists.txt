@@ -401,6 +401,7 @@ add_subdirectory(content)
 add_subdirectory(database)
 add_subdirectory(mapgen)
 add_subdirectory(network)
+add_subdirectory(myengine)
 add_subdirectory(script)
 add_subdirectory(util)
 add_subdirectory(server)
@@ -445,6 +446,7 @@ set(independent_SRCS
 	${database_SRCS}
 	${threading_SRCS}
 	${util_SRCS}
+	${myengine_SRCS}
 )
 
 file(GLOB common_HDRS "${CMAKE_CURRENT_SOURCE_DIR}/*.h")
@@ -498,6 +500,7 @@ endif()
 if(BUILD_UNITTESTS)
 	add_subdirectory(unittest)
 	list(APPEND common_SRCS ${UNITTEST_SRCS})
+	list(APPEND common_SRCS ${PROJECT_SOURCE_DIR}/tests/test_alias_layer.cpp)
 endif()
 
 if(BUILD_BENCHMARKS)
@@ -570,6 +573,7 @@ include_directories(
 	${PROJECT_BINARY_DIR}
 	${PROJECT_SOURCE_DIR}
 	${PROJECT_SOURCE_DIR}/script
+	${PROJECT_SOURCE_DIR}/myengine
 )
 include_directories(SYSTEM
 	${ZLIB_INCLUDE_DIR}

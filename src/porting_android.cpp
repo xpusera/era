@@ -22,6 +22,7 @@
 #include <sstream>
 #include <exception>
 #include <cstdlib>
+#include <algorithm>
 
 #ifdef GPROF
 #include "prof.h"
@@ -308,8 +309,8 @@ std::string getLanguageAndroid()
 	return readJavaString((jstring) result);
 }
 
-bool hasPhysicalKeyboardAndroid()
-{
+	bool hasPhysicalKeyboardAndroid()
+	{
 	jmethodID hasPhysicalKeyboard = jnienv->GetMethodID(activityClass,
 			"hasPhysicalKeyboard", "()Z");
 
@@ -318,7 +319,36 @@ bool hasPhysicalKeyboardAndroid()
 
 	jboolean result = jnienv->CallBooleanMethod(activity,
 			hasPhysicalKeyboard);
-	return result;
-}
+		return result;
+	}
+
+	bool getAndroidSensors(float out_values[7], int *mask)
+	{
+		if (!jnienv || !activity || !activityClass)
+			return false;
+
+		jmethodID midMask = jnienv->GetMethodID(activityClass, "getSensorsAvailabilityMask", "()I");
+		jmethodID midSnap = jnienv->GetMethodID(activityClass, "getSensorsSnapshot", "()[F");
+		if (!midMask || !midSnap)
+			return false;
+
+		jint m = jnienv->CallIntMethod(activity, midMask);
+		jobject obj = jnienv->CallObjectMethod(activity, midSnap);
+		if (!obj)
+			return false;
+		jfloatArray arr = (jfloatArray)obj;
+		jsize len = jnienv->GetArrayLength(arr);
+		jfloat tmp[7] = {0};
+		jsize n = std::min<jsize>(len, 7);
+		if (n > 0)
+			jnienv->GetFloatArrayRegion(arr, 0, n, tmp);
+		jnienv->DeleteLocalRef(obj);
+
+		for (int i = 0; i < 7; i++)
+			out_values[i] = (i < n) ? tmp[i] : 0.0f;
+		if (mask)
+			*mask = (int)m;
+		return true;
+	}
 
 }

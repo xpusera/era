@@ -34,6 +34,9 @@
 #include "lua_api/l_storage.h"
 #include "lua_api/l_ipc.h"
 #include "lua_api/l_htmlview.h"
+#include "lua_api/l_myengine.h"
+#include "myengine/aliases.h"
+#include "myengine/registry.h"
 
 extern "C" {
 #include <lualib.h>
@@ -73,6 +76,9 @@ ServerScripting::ServerScripting(Server* server):
 	// Initialize our lua_api modules
 	InitializeModApi(L, top);
 	lua_pop(L, 1);
+
+	Registry::init();
+	AliasLayer::load_aliases("myengine/alias_map.txt");
 
 	// Push builtin initialization type
 	lua_pushstring(L, "game");
@@ -159,6 +165,7 @@ void ServerScripting::InitializeModApi(lua_State *L, int top)
 	ModApiChannels::Initialize(L, top);
 	ModApiIPC::Initialize(L, top);
 	ModApiHTMLView::Initialize(L, top);
+	ModApiMyEngine::Initialize(L, top);
 }
 
 void ServerScripting::InitializeAsync(lua_State *L, int top)

@@ -10,7 +10,10 @@ class ServerScripting;
 #ifdef __ANDROID__
 
 void htmlview_jni_run(const std::string &id, const std::string &html);
+void htmlview_jni_run_worker(const std::string &id, const std::string &html);
 void htmlview_jni_run_external(const std::string &id, const std::string &root_dir,
+		const std::string &entry);
+void htmlview_jni_run_external_worker(const std::string &id, const std::string &root_dir,
 		const std::string &entry);
 void htmlview_jni_stop(const std::string &id);
 void htmlview_jni_display(const std::string &id, int x, int y, int w, int h,
