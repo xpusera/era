@@ -28,6 +28,10 @@ The `myengine` system provides a Lua-accessible API to get, set, and interact wi
 - `AliasLayer::load_aliases`: `src/myengine/aliases.cpp`. Reads `myengine/alias_map.txt` at startup.
 - `AliasLayer::resolve`: `src/myengine/aliases.cpp`. Main entry point for path translation.
 - `Registry::get/set/...`: `src/myengine/registry.cpp`. Handles the actual data access.
+- `scanner.py`: `src/myengine/scanner.py`. Python script that scans C++ headers at build time to populate the registry.
+
+## How the Scanner Works
+The scanner uses regular expressions to find `class` and `struct` definitions in `src/` headers. It identifies public methods and properties, converts their names from `CamelCase` or `camelCase` to `snake_case`, and builds a hierarchical path (e.g., `class_name.method_name`). These paths are then written to a generated C++ file (`generated_registry.cpp`) which registers them into the `Registry` during engine initialization.
 
 ## Gotchas
 - **Stale Aliases**: If an alias points to a real path that no longer exists in the C++ registry, the system must log a warning but not crash.

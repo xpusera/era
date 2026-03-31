@@ -76,6 +76,7 @@ ServerScripting::ServerScripting(Server* server):
 	InitializeModApi(L, top);
 	lua_pop(L, 1);
 
+	Registry::init();
 	AliasLayer::load_aliases("myengine/alias_map.txt");
 
 	// Push builtin initialization type

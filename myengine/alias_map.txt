@@ -1,6 +1,6 @@
 # myengine Alias Map
 # Format: stable_mod_path = real_generated_path
 
-player.physics.air_resistance = player_system.physics_component.air_resistance_value
-player.physics.calculate_air_resistance.drain_rate = player_system.physics_component.air_drain_rate
+player.physics.gravity = player_physics_override.gravity
+player.physics.speed = player_physics_override.speed
 world.mapgen.cave_density = world.generation.cave_density_factor

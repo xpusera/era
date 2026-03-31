@@ -17,3 +17,11 @@ void Registry::clear()
 {
 	m_registered_paths.clear();
 }
+
+// Forward declaration of the generated registration function
+void register_generated_paths();
+
+void Registry::init()
+{
+	register_generated_paths();
+}

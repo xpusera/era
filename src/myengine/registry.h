@@ -19,6 +19,11 @@ public:
 	static void register_path(const std::string &real_path);
 	static void clear();
 
+	/**
+	 * Initializes the registry with auto-generated paths.
+	 */
+	static void init();
+
 private:
 	// Maps internal paths to a simple existence flag for this simulation.
 	static std::unordered_map<std::string, bool> m_registered_paths;
