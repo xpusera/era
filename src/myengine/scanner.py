@@ -15,14 +15,12 @@ def parse_header(filepath):
     except Exception:
         return []
 
-    # Find classes and structs
     class_matches = re.finditer(r'(class|struct)\s+([A-Za-z0-9_]+)\s*(:[^{]+)?\{', content)
 
     for class_match in class_matches:
         class_name = class_match.group(2)
         class_snake = camel_to_snake(class_name)
 
-        # Simple brace matching to find class body
         start_pos = class_match.end()
         brace_count = 1
         end_pos = start_pos
@@ -33,20 +31,17 @@ def parse_header(filepath):
 
         class_body = content[start_pos:end_pos]
 
-        # Extract public sections (structs are public by default)
         public_sections = re.split(r'\b(private|protected):', class_body)
         public_content = public_sections[0]
         for i in range(1, len(public_sections), 2):
             if public_sections[i-1] == 'public':
                 public_content += public_sections[i]
 
-        # Extract methods
         method_matches = re.findall(r'\b([A-Za-z0-9_]+)\s*\([^)]*\)\s*(?:const)?\s*(?:override|final)?\s*;', public_content)
         for method in method_matches:
             if method not in ('if', 'for', 'while', 'switch', 'return', 'catch', 'throw', 'u32', 'u16', 's32', 'v3f'):
                 entities.append(f"{class_snake}.{camel_to_snake(method)}")
 
-        # Extract properties
         prop_matches = re.findall(r'\b(?:[A-Za-z0-9_<>:*]+)\s+([A-Za-z0-9_]+)\s*=', public_content)
         prop_matches += re.findall(r'\b(?:[A-Za-z0-9_<>:*]+)\s+([A-Za-z0-9_]+)\s*;', public_content)
         for prop in prop_matches:
@@ -65,7 +60,6 @@ def main(src_dir, output_file):
                 paths = parse_header(os.path.join(root, file))
                 all_paths.update(paths)
 
-    # Ensure directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     with open(output_file, 'w', encoding='utf-8') as f:

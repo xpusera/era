@@ -500,6 +500,7 @@ endif()
 if(BUILD_UNITTESTS)
 	add_subdirectory(unittest)
 	list(APPEND common_SRCS ${UNITTEST_SRCS})
+	list(APPEND common_SRCS ${PROJECT_SOURCE_DIR}/tests/test_alias_layer.cpp)
 endif()
 
 if(BUILD_BENCHMARKS)

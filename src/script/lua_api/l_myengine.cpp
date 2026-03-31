@@ -16,7 +16,6 @@ int ModApiMyEngine::l_get(lua_State *L)
 		return 1;
 	}
 
-	// Simulation: return a placeholder
 	lua_pushstring(L, "engine_value_placeholder");
 	return 1;
 }

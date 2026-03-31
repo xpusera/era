@@ -31,7 +31,6 @@ void AliasLayer::load_aliases(const std::string &filepath)
 	std::string full_path = porting::path_share + DIR_DELIM + filepath;
 	std::ifstream is(full_path);
 	if (!is.good()) {
-		// Fallback to relative path
 		is.open(filepath);
 	}
 
