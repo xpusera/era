@@ -16,7 +16,7 @@ public:
 	/**
 	 * Loads alias definitions from a file.
 	 *
-	 * @param filepath Path to the alias definition file.
+	 * @param filepath Path to the alias definition file (relative to share).
 	 */
 	static void load_aliases(const std::string &filepath);
 

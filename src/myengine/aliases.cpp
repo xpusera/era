@@ -1,11 +1,10 @@
 #include "myengine/aliases.h"
 #include "myengine/registry.h"
 #include "log.h"
-#include "filesys.h"
 #include "porting.h"
+#include "filesys.h"
 #include "util/string.h"
 #include <fstream>
-#include <sstream>
 
 std::unordered_map<std::string, std::string> AliasLayer::m_alias_table;
 
@@ -13,13 +12,11 @@ std::string AliasLayer::resolve(const std::string &path)
 {
 	auto it = m_alias_table.find(path);
 	if (it == m_alias_table.end()) {
-		// Fall through to the raw path directly if no alias exists.
 		return path;
 	}
 
 	const std::string &real_path = it->second;
 
-	// Check if the target real path exists in the registry.
 	if (!Registry::path_exists(real_path)) {
 		warningstream << "[myengine] WARNING: alias \"" << path
 					  << "\" points to a path that no longer exists (\""
@@ -34,7 +31,7 @@ void AliasLayer::load_aliases(const std::string &filepath)
 	std::string full_path = porting::path_share + DIR_DELIM + filepath;
 	std::ifstream is(full_path);
 	if (!is.good()) {
-		// Fallback to relative path if not found in path_share
+		// Fallback to relative path
 		is.open(filepath);
 	}
 
@@ -47,8 +44,6 @@ void AliasLayer::load_aliases(const std::string &filepath)
 	std::string line;
 	while (std::getline(is, line)) {
 		line = trim(line);
-
-		// Skip empty lines and comments.
 		if (line.empty() || line[0] == '#')
 			continue;
 

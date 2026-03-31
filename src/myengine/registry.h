@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <unordered_map>
 
 class Registry {
@@ -12,11 +11,13 @@ public:
 	static bool path_exists(const std::string &real_path);
 
 	/**
-	 * Simulated backend for registry lookups.
-	 * In a real scenario, this would interact with the auto-generated
-	 * C++ class/method/property mappings.
+	 * Registers a real C++-generated path into the registry.
 	 */
 	static void register_path(const std::string &real_path);
+
+	/**
+	 * Clears the registry (mainly for tests).
+	 */
 	static void clear();
 
 	/**
@@ -25,6 +26,5 @@ public:
 	static void init();
 
 private:
-	// Maps internal paths to a simple existence flag for this simulation.
 	static std::unordered_map<std::string, bool> m_registered_paths;
 };

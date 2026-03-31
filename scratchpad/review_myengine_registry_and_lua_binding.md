@@ -1,44 +1,34 @@
 # Review — myengine Registry and Lua Binding
 
 ## What This System Does
-The `myengine` system provides a Lua-accessible API to get, set, and interact with C++ classes, methods, and properties. It uses an auto-generated registry to map Lua paths to internal C++ structures, and an alias layer to provide stable, public-facing mod paths that persist even when internal C++ structures are refactored.
+The `myengine` system provides a Lua-accessible API to get, set, and interact with C++ classes, methods, and properties. It consists of three layers:
+1. **Auto-generated Registry**: A build-time scanner (`scanner.py`) extracts C++ entities from headers and registers them.
+2. **Stable Alias Layer**: A translation table (`aliases.cpp`) maps public mod paths to real internal paths, allowing engine refactoring without breaking mods.
+3. **Lua API**: A global `myengine` table in Lua providing access to engine components.
 
 ## Key Files
-- `src/myengine/aliases.h` — Defines the `AliasLayer` class for path translation.
-- `src/myengine/aliases.cpp` — Implements path resolution and alias file loading.
-- `src/myengine/registry.h` — Defines the `Registry` for mapping paths to C++ accessors.
-- `src/myengine/registry.cpp` — Implements the backend for get/set/hook/watch/modify/rewrite.
-- `src/script/lua_api/l_myengine.h` — Header for the `myengine` Lua API module.
-- `src/script/lua_api/l_myengine.cpp` — Implements the Lua-to-C++ bindings for the `myengine` table.
-- `myengine/alias_map.txt` — Human-maintained mapping of stable paths to internal paths.
-- `src/script/scripting_server.cpp` — Initializes and registers the `myengine` API.
-- `src/script/lua_api/l_base.cpp` — Provides base utilities for Lua-C++ interaction.
-- `src/script/lua_api/l_internal.h` — Contains macros for registering Lua functions.
+- `src/myengine/registry.h/cpp` — Registry backend for storing and checking engine paths.
+- `src/myengine/aliases.h/cpp` — Alias translation logic and file loading.
+- `src/myengine/scanner.py` — Build-time Python script that generates the registry population code.
+- `src/script/lua_api/l_myengine.h/cpp` — Lua bindings for the `myengine` API.
+- `myengine/alias_map.txt` — Human-maintained alias definitions.
+- `src/myengine/CMakeLists.txt` — Build configuration for the scanner and sources.
 
 ## How The Pieces Connect
-1. **Lua Call**: A mod calls `myengine.get("stable.path")`.
-2. **Lua Binding**: `ModApiMyEngine::l_get` in `l_myengine.cpp` is triggered.
-3. **Alias Resolution**: It calls `AliasLayer::resolve("stable.path")`.
-4. **Translation**: `AliasLayer` checks its in-memory map (loaded from `alias_map.txt`). If "stable.path" is found, it returns the real internal path (e.g., "internal.structure.value").
-5. **Registry Lookup**: The system uses the resolved path to look up the corresponding C++ object or property in the `Registry`.
-6. **Execution**: The `Registry` performs the requested operation (get/set/etc.) on the C++ side and returns the result to Lua.
-
-## Locations Of Things
-- `ModApiMyEngine::Initialize`: `src/script/lua_api/l_myengine.cpp`. Registers the `myengine` global table.
-- `AliasLayer::load_aliases`: `src/myengine/aliases.cpp`. Reads `myengine/alias_map.txt` at startup.
-- `AliasLayer::resolve`: `src/myengine/aliases.cpp`. Main entry point for path translation.
-- `Registry::get/set/...`: `src/myengine/registry.cpp`. Handles the actual data access.
-- `scanner.py`: `src/myengine/scanner.py`. Python script that scans C++ headers at build time to populate the registry.
-
-## How the Scanner Works
-The scanner uses regular expressions to find `class` and `struct` definitions in `src/` headers. It identifies public methods and properties, converts their names from `CamelCase` or `camelCase` to `snake_case`, and builds a hierarchical path (e.g., `class_name.method_name`). These paths are then written to a generated C++ file (`generated_registry.cpp`) which registers them into the `Registry` during engine initialization.
+1. **Build Time**: `scanner.py` runs, reading `src/*.h`. It identifies classes/methods and generates `generated_registry.cpp`.
+2. **Initialization**: `scripting_server.cpp` calls `Registry::init()` (which runs the generated code) and `AliasLayer::load_aliases()`.
+3. **Lua Call**: `myengine.get("mod.path")` calls into C++.
+4. **Resolution**: `AliasLayer::resolve("mod.path")` checks `alias_map.txt`. If it finds a mapping to `internal.path`, it returns that; otherwise, it returns the original.
+5. **Validation**: `AliasLayer` warns if the target internal path is missing from the `Registry`.
+6. **Execution**: The registry is used to access the real C++ data (simulated for now).
 
 ## Gotchas
-- **Stale Aliases**: If an alias points to a real path that no longer exists in the C++ registry, the system must log a warning but not crash.
-- **One-to-One**: Aliases are currently one-to-one; no wildcards are supported.
-- **Resolution Order**: Aliases must be resolved *before* any registry lookup is attempted.
-- **Bootstrapping**: The `AliasLayer` must be initialized early enough to be available when the first Lua scripts are loaded.
+- **Source Paths**: The scanner must use absolute paths or be aware of the build directory structure.
+- **Header Guards**: All new C++ files must have proper `#pragma once` or guards.
+- **Linker Issues**: Generated files must be correctly added to the CMake target to avoid "undeclared identifier" or "multiple definition" errors.
+- **Path Portability**: Use `porting::path_share` for loading the alias map.
 
-## Open Questions
-- How is the "real internal path" registry generated? (Assumed to be an external build-time process for this task).
-- Should aliases also support nested resolution (alias of an alias)? (Task says one-to-one, so likely not).
+## Update (2026-03-31)
+- Added build-time scanner integration.
+- Fixed CI build errors by adding `find_package(Python3)` and ensuring correct header inclusions in `scripting_server.cpp`.
+- Integrated unit tests into the Luanti test framework.
