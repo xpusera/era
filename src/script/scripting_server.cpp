@@ -36,6 +36,7 @@
 #include "lua_api/l_htmlview.h"
 #include "lua_api/l_myengine.h"
 #include "myengine/aliases.h"
+#include "myengine/registry.h"
 
 extern "C" {
 #include <lualib.h>
