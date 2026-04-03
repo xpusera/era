@@ -819,48 +819,6 @@ enable_bloom (Enable Bloom) bool false
 #    Requires: enable_post_processing, enable_bloom
 enable_volumetric_lighting (Volumetric lighting) bool false
 
-[***VHS Horror Post-processing]
-
-#    Enable color depth reduction for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_color_depth (VHS Color Depth Reduction) bool false
-
-#    Enable sharpness (unsharp mask) for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_sharpness (VHS Sharpness) bool false
-
-#    Enable chroma blur for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_chroma_blur (VHS Chroma Blur) bool false
-
-#    Enable luma noise for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_luma_noise (VHS Luma Noise) bool false
-
-#    Enable chroma noise for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_chroma_noise (VHS Chroma Noise) bool false
-
-#    Enable lens distortion for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_lens_distortion (VHS Lens Distortion) bool false
-
-#    Enable interlacing for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_interlacing (VHS Interlacing) bool false
-
-#    Enable aspect ratio bars for VHS effect.
-#
-#    Requires: enable_post_processing
-vhs_aspect_ratio (VHS Aspect Ratio Bars) bool false
-
 [**Other Effects]
 
 #   Simulate translucency when looking at foliage in the sunlight.

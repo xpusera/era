@@ -9,7 +9,6 @@
 #include "client/shader.h"
 #include "settings.h"
 #include "plain.h"
-#include "log.h"
 #include <ISceneManager.h>
 
 PostProcessingStep::PostProcessingStep(u32 _shader_id, const std::vector<u8> &_texture_map) :
@@ -73,22 +72,6 @@ void PostProcessingStep::run(PipelineContext &context)
 	};
 	static const u16 indices[6] = {0, 1, 2, 2, 3, 0};
 	driver->setMaterial(material);
-
-	if (animation_timer_id == -1)
-		animation_timer_id = driver->getGPUProgrammingServices()->getPixelShaderConstantID("animationTimer");
-
-	if (animation_timer_id != -1) {
-		const float animation_timer_f = (float)context.client->getEnv().getFrameTime() / 1000.f;
-		driver->setPixelShaderConstant(animation_timer_id, &animation_timer_f, 1);
-	} else {
-		// Try to get ID again, maybe shader wasn't ready before
-		animation_timer_id = driver->getGPUProgrammingServices()->getPixelShaderConstantID("animationTimer");
-		if (animation_timer_id != -1) {
-			const float animation_timer_f = (float)context.client->getEnv().getFrameTime() / 1000.f;
-			driver->setPixelShaderConstant(animation_timer_id, &animation_timer_f, 1);
-		}
-	}
-
 	driver->drawVertexPrimitiveList(&vertices, 4, &indices, 2);
 }
 

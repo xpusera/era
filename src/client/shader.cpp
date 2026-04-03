@@ -259,23 +259,6 @@ public:
 
 		if (g_settings->getBool("enable_volumetric_lighting"))
 			constants["VOLUMETRIC_LIGHT"] = 1;
-
-		if (g_settings->getBool("vhs_color_depth"))
-			constants["VHS_COLOR_DEPTH"] = 1;
-		if (g_settings->getBool("vhs_sharpness"))
-			constants["VHS_SHARPNESS"] = 1;
-		if (g_settings->getBool("vhs_chroma_blur"))
-			constants["VHS_CHROMA_BLUR"] = 1;
-		if (g_settings->getBool("vhs_luma_noise"))
-			constants["VHS_LUMA_NOISE"] = 1;
-		if (g_settings->getBool("vhs_chroma_noise"))
-			constants["VHS_CHROMA_NOISE"] = 1;
-		if (g_settings->getBool("vhs_lens_distortion"))
-			constants["VHS_LENS_DISTORTION"] = 1;
-		if (g_settings->getBool("vhs_interlacing"))
-			constants["VHS_INTERLACING"] = 1;
-		if (g_settings->getBool("vhs_aspect_ratio"))
-			constants["VHS_ASPECT_RATIO"] = 1;
 	}
 };
 
