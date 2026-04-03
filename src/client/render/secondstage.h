@@ -39,6 +39,7 @@ private:
 	RenderSource *source { nullptr };
 	RenderTarget *target { nullptr };
 	video::SMaterial material;
+	s32 animation_timer_id { -1 };
 
 	void configureMaterial();
 };

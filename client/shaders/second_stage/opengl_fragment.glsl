@@ -16,6 +16,7 @@ uniform sampler2D rendered;
 uniform sampler2D bloom;
 
 uniform vec2 texelSize0;
+uniform float animationTimer;
 
 uniform ExposureParams exposureParams;
 uniform lowp float bloomIntensity;
@@ -85,6 +86,30 @@ vec3 applySaturation(vec3 color, float factor)
 	return mix(vec3(brightness), color, factor);
 }
 
+vec3 vhs_rgb2yuv(vec3 rgb)
+{
+	float y = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+	float u = 0.493 * (rgb.b - y);
+	float v = 0.877 * (rgb.r - y);
+	return vec3(y, u, v);
+}
+
+vec3 vhs_yuv2rgb(vec3 yuv)
+{
+	float y = yuv.x;
+	float u = yuv.y;
+	float v = yuv.z;
+	float r = y + v / 0.877;
+	float g = y - 0.39393 * u - 0.58081 * v;
+	float b = y + u / 0.493;
+	return vec3(r, g, b);
+}
+
+highp float vhs_rand(vec2 co)
+{
+	return fract(sin(dot(co, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 #ifdef ENABLE_DITHERING
 // From http://alex.vlachos.com/graphics/Alex_Vlachos_Advanced_VR_Rendering_GDC2015.pdf
 // and https://www.shadertoy.com/view/MslGR8 (5th one starting from the bottom)
@@ -102,6 +127,19 @@ vec3 screen_space_dither(highp vec2 frag_coord) {
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
+	float time = animationTimer;
+
+#ifdef VHS_LENS_DISTORTION
+	uv = uv * 2.0 - 1.0;
+	uv *= 1.0 + dot(uv, uv) * 0.1;
+	uv = uv * 0.85 * 0.5 + 0.5;
+
+	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+		gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+		return;
+	}
+#endif
+
 #ifdef ENABLE_SSAA
 	vec4 color = vec4(0.);
 	for (float dx = 1.; dx < SSAA_SCALE; dx += 2.)
@@ -110,6 +148,50 @@ void main(void)
 	color /= SSAA_SCALE * SSAA_SCALE / 4.;
 #else
 	vec4 color = texture2D(rendered, uv).rgba;
+#endif
+
+#if defined(VHS_SHARPNESS) || defined(VHS_CHROMA_BLUR)
+	vec3 center = color.rgb;
+	vec3 up    = texture2D(rendered, uv + vec2(0.0, texelSize0.y)).rgb;
+	vec3 down  = texture2D(rendered, uv - vec2(0.0, texelSize0.y)).rgb;
+	vec3 left  = texture2D(rendered, uv - vec2(texelSize0.x, 0.0)).rgb;
+	vec3 right = texture2D(rendered, uv + vec2(texelSize0.x, 0.0)).rgb;
+
+#ifdef VHS_SHARPNESS
+	color.rgb = center * 5.0 - (up + down + left + right);
+#endif
+
+#ifdef VHS_CHROMA_BLUR
+	vec3 chroma_sum = center + up + down + left + right;
+	chroma_sum += texture2D(rendered, uv + vec2(texelSize0.x, texelSize0.y)).rgb;
+	chroma_sum += texture2D(rendered, uv + vec2(-texelSize0.x, texelSize0.y)).rgb;
+	chroma_sum += texture2D(rendered, uv + vec2(texelSize0.x, -texelSize0.y)).rgb;
+	chroma_sum += texture2D(rendered, uv + vec2(-texelSize0.x, -texelSize0.y)).rgb;
+	vec3 chroma_avg = chroma_sum / 9.0;
+
+	vec3 yuv_orig = vhs_rgb2yuv(color.rgb);
+	vec3 yuv_blur = vhs_rgb2yuv(chroma_avg);
+	color.rgb = vhs_yuv2rgb(vec3(yuv_orig.x, yuv_blur.yz));
+#endif
+#endif
+
+#ifdef VHS_COLOR_DEPTH
+	color.rgb = floor(color.rgb * 256.0) / 256.0;
+#endif
+
+#if defined(VHS_LUMA_NOISE) || defined(VHS_CHROMA_NOISE)
+	vec3 yuv = vhs_rgb2yuv(color.rgb);
+#ifdef VHS_LUMA_NOISE
+	float l_noise = vhs_rand(uv + fract(time * 5.0));
+	yuv.x += (l_noise - 0.5) * 0.05;
+#endif
+#ifdef VHS_CHROMA_NOISE
+	float noise_u = vhs_rand(uv + fract(time * 5.0) + vec2(0.1, 0.1));
+	float noise_v = vhs_rand(uv + fract(time * 5.0) + vec2(0.2, 0.2));
+	yuv.y += (noise_u - 0.5) * 0.2;
+	yuv.z += (noise_v - 0.5) * 0.2;
+#endif
+	color.rgb = vhs_yuv2rgb(yuv);
 #endif
 
 	// translate to linear colorspace (approximate)
@@ -145,6 +227,20 @@ void main(void)
 
 		color.rgb = applySaturation(color.rgb, saturation);
 	}
+
+#ifdef VHS_INTERLACING
+	float interlace = mod(floor(gl_FragCoord.y), 2.0);
+	float alternate = mod(floor(time * 24.0), 2.0);
+	if (mod(interlace + alternate, 2.0) > 0.5) {
+		color.rgb *= 0.75;
+	}
+#endif
+
+#ifdef VHS_ASPECT_RATIO
+	if (abs(uv.x * 2.0 - 1.0) > 0.75) {
+		color.rgb = vec3(0.0);
+	}
+#endif
 
 #ifdef ENABLE_DITHERING
 	// Apply dithering just before quantisation
